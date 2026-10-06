@@ -1,0 +1,559 @@
+{
+  "version": 1,
+  "author": "Smart Recycling System",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 240,
+      "left": 430,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-a4988",
+      "id": "a4988",
+      "top": 50,
+      "left": 420,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-stepper-motor",
+      "id": "stepper",
+      "top": 40,
+      "left": 80,
+      "attrs": {
+        "size": "medium"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo",
+      "top": 470,
+      "left": 420,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnDetect",
+      "top": 70,
+      "left": 760,
+      "attrs": {
+        "color": "blue",
+        "label": "DETECT MATERIAL"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnAluminum",
+      "top": 140,
+      "left": 760,
+      "attrs": {
+        "color": "green",
+        "label": "ALUMINUM"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnSteel",
+      "top": 210,
+      "left": 760,
+      "attrs": {
+        "color": "yellow",
+        "label": "STEEL"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnPlastic",
+      "top": 280,
+      "left": 760,
+      "attrs": {
+        "color": "orange",
+        "label": "PLASTIC"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnUnknown",
+      "top": 350,
+      "left": 760,
+      "attrs": {
+        "color": "red",
+        "label": "UNKNOWN"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnEmergency",
+      "top": 420,
+      "left": 760,
+      "attrs": {
+        "color": "red",
+        "label": "EMERGENCY STOP"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "hcAluminum",
+      "top": 590,
+      "left": 50,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "hcSteel",
+      "top": 590,
+      "left": 230,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "hcPlastic",
+      "top": 590,
+      "left": 410,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "hcInspection",
+      "top": 590,
+      "left": 590,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledGreen",
+      "top": 700,
+      "left": 760,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "resGreen",
+      "top": 700,
+      "left": 670,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledRed",
+      "top": 760,
+      "left": 760,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "resRed",
+      "top": 760,
+      "left": 670,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 700,
+      "left": 540,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-breadboard",
+      "id": "breadboard",
+      "top": 820,
+      "left": 80,
+      "attrs": {
+        "color": "blue"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:25",
+      "a4988:STEP",
+      "green",
+      []
+    ],
+    [
+      "esp:26",
+      "a4988:DIR",
+      "green",
+      []
+    ],
+    [
+      "esp:27",
+      "a4988:ENABLE",
+      "green",
+      []
+    ],
+    [
+      "esp:3V3",
+      "a4988:VDD",
+      "red",
+      []
+    ],
+    [
+      "esp:VIN",
+      "a4988:VMOT",
+      "red",
+      []
+    ],
+    [
+      "esp:GND.1",
+      "a4988:GND",
+      "black",
+      []
+    ],
+    [
+      "a4988:1A",
+      "stepper:A+",
+      "black",
+      []
+    ],
+    [
+      "a4988:1B",
+      "stepper:A-",
+      "black",
+      []
+    ],
+    [
+      "a4988:2A",
+      "stepper:B+",
+      "black",
+      []
+    ],
+    [
+      "a4988:2B",
+      "stepper:B-",
+      "black",
+      []
+    ],
+    [
+      "esp:23",
+      "servo:PWM",
+      "orange",
+      []
+    ],
+    [
+      "esp:VIN",
+      "servo:V+",
+      "red",
+      []
+    ],
+    [
+      "esp:GND.1",
+      "servo:GND",
+      "black",
+      []
+    ],
+    [
+      "btnDetect:1.l",
+      "esp:34",
+      "blue",
+      []
+    ],
+    [
+      "btnDetect:2.l",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "btnAluminum:1.l",
+      "esp:35",
+      "green",
+      []
+    ],
+    [
+      "btnAluminum:2.l",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "btnSteel:1.l",
+      "esp:36",
+      "yellow",
+      []
+    ],
+    [
+      "btnSteel:2.l",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "btnPlastic:1.l",
+      "esp:39",
+      "orange",
+      []
+    ],
+    [
+      "btnPlastic:2.l",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "btnUnknown:1.l",
+      "esp:32",
+      "purple",
+      []
+    ],
+    [
+      "btnUnknown:2.l",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "btnEmergency:1.l",
+      "esp:33",
+      "red",
+      []
+    ],
+    [
+      "btnEmergency:2.l",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "hcAluminum:VCC",
+      "esp:VIN",
+      "red",
+      []
+    ],
+    [
+      "hcAluminum:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "hcAluminum:TRIG",
+      "esp:13",
+      "purple",
+      []
+    ],
+    [
+      "hcAluminum:ECHO",
+      "esp:14",
+      "purple",
+      []
+    ],
+    [
+      "hcSteel:VCC",
+      "esp:VIN",
+      "red",
+      []
+    ],
+    [
+      "hcSteel:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "hcSteel:TRIG",
+      "esp:16",
+      "purple",
+      []
+    ],
+    [
+      "hcSteel:ECHO",
+      "esp:17",
+      "purple",
+      []
+    ],
+    [
+      "hcPlastic:VCC",
+      "esp:VIN",
+      "red",
+      []
+    ],
+    [
+      "hcPlastic:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "hcPlastic:TRIG",
+      "esp:18",
+      "purple",
+      []
+    ],
+    [
+      "hcPlastic:ECHO",
+      "esp:19",
+      "purple",
+      []
+    ],
+    [
+      "hcInspection:VCC",
+      "esp:VIN",
+      "red",
+      []
+    ],
+    [
+      "hcInspection:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "hcInspection:TRIG",
+      "esp:21",
+      "purple",
+      []
+    ],
+    [
+      "hcInspection:ECHO",
+      "esp:22",
+      "purple",
+      []
+    ],
+    [
+      "esp:4",
+      "resGreen:1",
+      "green",
+      []
+    ],
+    [
+      "resGreen:2",
+      "ledGreen:A",
+      "green",
+      []
+    ],
+    [
+      "ledGreen:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:5",
+      "resRed:1",
+      "red",
+      []
+    ],
+    [
+      "resRed:2",
+      "ledRed:A",
+      "red",
+      []
+    ],
+    [
+      "ledRed:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:15",
+      "buzzer:1",
+      "orange",
+      []
+    ],
+    [
+      "buzzer:2",
+      "esp:GND.1",
+      "black",
+      []
+    ]
+  ],
+  "labels": [
+    {
+      "text": "SMART RECYCLING SYSTEM",
+      "x": 80,
+      "y": 10,
+      "color": "black",
+      "size": 24
+    },
+    {
+      "text": "CONVEYOR - Stepper + A4988",
+      "x": 70,
+      "y": 120,
+      "color": "black",
+      "size": 16
+    },
+    {
+      "text": "REAL: DC Motor + L298N",
+      "x": 100,
+      "y": 145,
+      "color": "gray",
+      "size": 12
+    },
+    {
+      "text": "AI RESULT SIMULATION",
+      "x": 710,
+      "y": 35,
+      "color": "black",
+      "size": 16
+    },
+    {
+      "text": "REAL: ESP32-CAM + OV2640 + AI",
+      "x": 690,
+      "y": 55,
+      "color": "gray",
+      "size": 12
+    },
+    {
+      "text": "DETECT MATERIAL = IR SENSOR SIGNAL",
+      "x": 680,
+      "y": 80,
+      "color": "blue",
+      "size": 12
+    },
+    {
+      "text": "FILL LEVEL SENSORS",
+      "x": 80,
+      "y": 555,
+      "color": "black",
+      "size": 16
+    },
+    {
+      "text": "ALUMINUM",
+      "x": 70,
+      "y": 570,
+      "color": "green",
+      "size": 12
+    },
+    {
+      "text": "STEEL",
+      "x": 250,
+      "y": 570,
+      "color": "gray",
+      "size": 12
+    },
+    {
+      "text": "PLASTIC",
+      "x": 430,
+      "y": 570,
+      "color": "orange",
+      "size": 12
+    },
+    {
+      "text": "INSPECTION",
+      "x": 600,
+      "y": 570,
+      "color": "red",
+      "size": 12
+    },
+    {
+      "text": "STATUS / WARNING",
+      "x": 600,
+      "y": 650,
+      "color": "black",
+      "size": 16
+    }
+  ]
+}
