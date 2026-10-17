@@ -1,7 +1,25 @@
 #include <Arduino.h>
 #include <ESP32Servo.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
 
 // =====================================================
+// WIFI & MQTT CONFIGURATION (Wokwi & IoT Gateway)
+// =====================================================
+const char* WIFI_SSID         = "Wokwi-GUEST";
+const char* WIFI_PASS         = "";
+const char* MQTT_BROKER       = "broker.emqx.io";
+const int   MQTT_PORT         = 1883;
+const char* MQTT_TOPIC_STATUS = "nhom13/recycling/status";
+const char* MQTT_TOPIC_COMMAND= "nhom13/recycling/command";
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+unsigned long lastMqttRetry = 0;
+unsigned long lastHeartbeat = 0;
+int currentServoAngle = 90;
+
 // BUTTON PINS
 // =====================================================
 const int PIN_DETECT     = 32;
@@ -97,6 +115,167 @@ String currentBin      = "";
 
 // Lưu loại vật liệu bị chặn vì thùng đầy
 String blockedMaterial = "";
+
+// Forward declarations
+void activateEmergency();
+void resetEmergency();
+void emptyBlockedBin();
+void startSorting(const char *material, int angle, const char *binName);
+void stopConveyor();
+void startConveyor();
+bool isBinFull(String material);
+void publishTelemetry(const char* customMsg = nullptr);
+
+// =====================================================
+// MQTT TELEMETRY & NETWORK FUNCTIONS
+// =====================================================
+String getStateString() {
+  switch (state) {
+    case WAIT_MATERIAL: return "WAIT_MATERIAL";
+    case WAIT_AI: return "WAIT_AI";
+    case SORTING: return "SORTING";
+    case BIN_FULL_STOP: return "BIN_FULL_STOP";
+    case EMERGENCY_STOPPED: return "EMERGENCY_STOPPED";
+    default: return "UNKNOWN";
+  }
+}
+
+void publishTelemetry(const char* customMsg) {
+  if (!mqttClient.connected()) return;
+
+  JsonDocument doc;
+  doc["state"] = getStateString();
+  doc["conveyor"] = conveyorRunning;
+  doc["servoAngle"] = currentServoAngle;
+  doc["material"] = currentMaterial;
+  doc["bin"] = currentBin;
+  doc["confidence"] = (currentMaterial == "" || currentMaterial == "UNKNOWN") ? 0.0 : 96.5;
+
+  JsonObject bins = doc["bins"].to<JsonObject>();
+  bins["aluminum"] = aluminumLevel;
+  bins["steel"] = steelLevel;
+  bins["plastic"] = plasticLevel;
+  bins["inspection"] = inspectionLevel;
+
+  doc["emergency"] = emergencyActive;
+  doc["warning"] = (state == BIN_FULL_STOP || aluminumLevel >= WARNING_LEVEL || steelLevel >= WARNING_LEVEL || plasticLevel >= WARNING_LEVEL || inspectionLevel >= WARNING_LEVEL);
+  doc["full"] = (state == BIN_FULL_STOP || isBinFull("ALUMINUM") || isBinFull("STEEL") || isBinFull("PLASTIC") || isBinFull("UNKNOWN"));
+
+  if (customMsg != nullptr) {
+    doc["message"] = customMsg;
+  } else {
+    if (state == EMERGENCY_STOPPED) {
+      doc["message"] = "EMERGENCY STOP ACTIVATED";
+    } else if (state == BIN_FULL_STOP) {
+      doc["message"] = "BIN FULL! Sorting blocked.";
+    } else if (state == SORTING) {
+      doc["message"] = "Routing material to " + currentBin;
+    } else if (state == WAIT_AI) {
+      doc["message"] = "Material detected, waiting for AI...";
+    } else {
+      doc["message"] = "System ready. Waiting for material...";
+    }
+  }
+
+  char buffer[512];
+  size_t n = serializeJson(doc, buffer);
+  mqttClient.publish(MQTT_TOPIC_STATUS, buffer, n);
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String msg = "";
+  for (unsigned int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  msg.trim();
+  Serial.print("MQTT Received [");
+  Serial.print(topic);
+  Serial.print("]: ");
+  Serial.println(msg);
+
+  if (msg == "EMERGENCY" || msg.indexOf("\"cmd\":\"emergency\"") >= 0) {
+    if (!emergencyActive) {
+      activateEmergency();
+    } else {
+      resetEmergency();
+    }
+  } else if (msg == "EMPTY_BIN" || msg.indexOf("\"cmd\":\"empty_bin\"") >= 0) {
+    if (state == BIN_FULL_STOP) {
+      emptyBlockedBin();
+    }
+  } else if (msg == "DETECT" || msg.indexOf("\"cmd\":\"detect\"") >= 0) {
+    if (state == WAIT_MATERIAL) {
+      stopConveyor();
+      state = WAIT_AI;
+      publishTelemetry("Material detected via Web!");
+    }
+  } else if (msg == "ALUMINUM" || msg.indexOf("\"cmd\":\"aluminum\"") >= 0) {
+    if (state == WAIT_AI) {
+      startSorting("ALUMINUM", SERVO_ALUMINUM, "ALUMINUM BIN");
+    }
+  } else if (msg == "STEEL" || msg.indexOf("\"cmd\":\"steel\"") >= 0) {
+    if (state == WAIT_AI) {
+      startSorting("STEEL", SERVO_STEEL, "STEEL BIN");
+    }
+  } else if (msg == "PLASTIC" || msg.indexOf("\"cmd\":\"plastic\"") >= 0) {
+    if (state == WAIT_AI) {
+      startSorting("PLASTIC", SERVO_PLASTIC, "PLASTIC BIN");
+    }
+  } else if (msg == "UNKNOWN" || msg.indexOf("\"cmd\":\"unknown\"") >= 0) {
+    if (state == WAIT_AI) {
+      startSorting("UNKNOWN", SERVO_UNKNOWN, "INSPECTION AREA");
+    }
+  }
+}
+
+void setupNetwork() {
+  Serial.println("Connecting to WiFi (Wokwi-GUEST)...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  unsigned long startWait = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startWait < 5000) {
+    delay(200);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi Connected! IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("WiFi not yet connected. Will retry in background.");
+  }
+
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setCallback(mqttCallback);
+}
+
+void maintainMqtt() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  if (!mqttClient.connected()) {
+    unsigned long now = millis();
+    if (now - lastMqttRetry > 4000) {
+      lastMqttRetry = now;
+      String clientId = "ESP32Recycling-" + String(random(0xffff), HEX);
+      Serial.print("Connecting to MQTT Broker: ");
+      Serial.println(MQTT_BROKER);
+      if (mqttClient.connect(clientId.c_str())) {
+        Serial.println("MQTT Connected successfully!");
+        mqttClient.subscribe(MQTT_TOPIC_COMMAND);
+        publishTelemetry("ESP32 Online & Ready");
+      } else {
+        Serial.print("MQTT connect failed, state=");
+        Serial.println(mqttClient.state());
+      }
+    }
+  } else {
+    mqttClient.loop();
+  }
+}
 
 // =====================================================
 // STATUS FUNCTIONS
@@ -408,10 +587,13 @@ void blockSortingBecauseFull(
   sortingServo.write(
     SERVO_HOME
   );
+  currentServoAngle = SERVO_HOME;
 
   setFullStatus();
 
   state = BIN_FULL_STOP;
+
+  publishTelemetry("WARNING: Bin Full! Sorting blocked.");
 }
 
 // =====================================================
@@ -501,6 +683,7 @@ void emptyBlockedBin() {
   sortingServo.write(
     SERVO_HOME
   );
+  currentServoAngle = SERVO_HOME;
 
   // Tắt cảnh báo
   setNormalStatus();
@@ -528,6 +711,8 @@ void emptyBlockedBin() {
   Serial.println(
     "=============================="
   );
+
+  publishTelemetry("Bin emptied. System ready.");
 }
 
 // =====================================================
@@ -593,6 +778,7 @@ void startSorting(
   sortingServo.write(
     angle
   );
+  currentServoAngle = angle;
 
   startConveyor();
 
@@ -600,6 +786,8 @@ void startSorting(
     millis();
 
   state = SORTING;
+
+  publishTelemetry("Sorting material...");
 }
 
 // =====================================================
@@ -614,6 +802,7 @@ void activateEmergency() {
   sortingServo.write(
     SERVO_HOME
   );
+  currentServoAngle = SERVO_HOME;
 
   digitalWrite(
     PIN_LED_GREEN,
@@ -669,6 +858,8 @@ void activateEmergency() {
   Serial.println(
     "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
   );
+
+  publishTelemetry("EMERGENCY STOP ACTIVATED!");
 }
 
 // =====================================================
@@ -683,6 +874,7 @@ void resetEmergency() {
   sortingServo.write(
     SERVO_HOME
   );
+  currentServoAngle = SERVO_HOME;
 
   currentMaterial = "";
   currentBin = "";
@@ -710,6 +902,8 @@ void resetEmergency() {
   Serial.println(
     "Waiting for material..."
   );
+
+  publishTelemetry("Emergency reset. System ready.");
 }
 
 // =====================================================
@@ -849,12 +1043,27 @@ void setup() {
   Serial.println(
     "Waiting for material..."
   );
+
+  // =================================================
+  // NETWORK & MQTT (IoT Gateway)
+  // =================================================
+  setupNetwork();
 }
 
 // =====================================================
 // LOOP
 // =====================================================
 void loop() {
+
+  // =================================================
+  // MQTT & IOT TELEMETRY
+  // =================================================
+  maintainMqtt();
+
+  if (millis() - lastHeartbeat >= 1500) {
+    lastHeartbeat = millis();
+    publishTelemetry();
+  }
 
   // =================================================
   // EMERGENCY STOP
@@ -993,6 +1202,8 @@ void loop() {
 
       state =
         WAIT_AI;
+
+      publishTelemetry("Material detected! Waiting for AI result...");
     }
   }
 
@@ -1097,6 +1308,7 @@ void loop() {
       sortingServo.write(
         SERVO_HOME
       );
+      currentServoAngle = SERVO_HOME;
 
       Serial.println(
         "Servo returned to HOME (90 degrees)."
@@ -1121,6 +1333,8 @@ void loop() {
       Serial.println(
         "Waiting for material..."
       );
+
+      publishTelemetry("Sorting completed. Ready for next material.");
     }
   }
 

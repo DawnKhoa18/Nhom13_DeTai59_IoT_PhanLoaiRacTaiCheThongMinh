@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Recycling IoT Dashboard | Đề Tài 59 - Nhóm 13</title>
+  
+  <!-- Font and Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- MQTT.js CDN -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+
+  <!-- =====================================================
+       HEADER & TOP BAR
+       ===================================================== -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-icon">♻️</div>
+      <div class="brand-text">
+        <h1>SMART RECYCLING SYSTEM</h1>
+        <p>Đề tài 59: IoT Phân loại rác tái chế thông minh (Nhóm 13)</p>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <!-- Connection Status Pill -->
+      <div id="statusPill" class="status-pill">
+        <span class="status-dot"></span>
+        <span id="statusText">Đang khởi tạo...</span>
+      </div>
+
+      <!-- Mode Switcher -->
+      <button id="btnToggleMode" class="btn-mode" title="Chuyển đổi giữa Live IoT và Mô phỏng độc lập">
+        <span>🎮 Chuyển sang Demo Offline</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =====================================================
+       MAIN CONTAINER
+       ===================================================== -->
+  <main class="container">
+
+    <!-- Emergency / Warning Alert Banner -->
+    <div id="alertBanner" class="alert-banner">
+      <span id="alertText">⚠️ Cảnh báo an toàn hệ thống</span>
+    </div>
+
+    <!-- Section 1: Conveyor Belt & Station Animation -->
+    <section class="card-section">
+      <div class="section-header">
+        <div class="section-title">
+          <span>🏭</span>
+          <h2>Mô Phỏng Trực Quan Dây Chuyền Băng Chuyền & Cơ Cấu Phân Loại</h2>
+        </div>
+        <div class="section-subtitle">Real-time Conveyor & Mechanical Flap Simulation</div>
+      </div>
+
+      <div class="canvas-wrapper">
+        <canvas id="conveyorCanvas"></canvas>
+        <div class="canvas-overlay-badges">
+          <div class="overlay-badge">Băng chuyền: <span id="overlayConveyorState">Vận hành</span></div>
+          <div class="overlay-badge">Cảm biến IR: <span id="overlayIRState">Chờ vật thể</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Telemetry Metrics Grid -->
+    <section class="dashboard-grid">
+      <!-- FSM State Card -->
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Trạng thái hệ thống (FSM)</span>
+          <span class="stat-card-icon">⚙️</span>
+        </div>
+        <div class="stat-main-value">
+          <span id="badgeSystemState" class="stat-badge badge-state-wait">WAIT_MATERIAL</span>
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 8px;">ESP32 Controller finite state machine</p>
+      </div>
+
+      <!-- Conveyor Status Card -->
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Động cơ băng chuyền</span>
+          <span class="stat-card-icon">🔄</span>
+        </div>
+        <div class="stat-main-value" id="valConveyorStatus" style="color: #10b981;">
+          ĐANG CHẠY
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 8px;">Stepper Motor + Driver A4988 (DC/L298N)</p>
+      </div>
+
+      <!-- Servo Angle Card -->
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Góc cơ cấu Servo</span>
+          <span class="stat-card-icon">📐</span>
+        </div>
+        <div class="stat-main-value" id="valServoAngle" style="color: #f59e0b;">
+          90°
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 8px;">Home: 90° | Nhôm: 30° | Thép: 70° | Nhựa: 110° | Khác: 150°</p>
+      </div>
+
+      <!-- AI Classification Result Card -->
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Kết quả nhận diện AI</span>
+          <span class="stat-card-icon">👁️</span>
+        </div>
+        <div class="stat-main-value" id="valAiResult" style="color: #9ca3af;">
+          Chờ vật thể
+        </div>
+        <p id="valAiConfidence" style="font-size: 0.82rem; color: var(--accent-cyan); font-weight: 600; margin-top: 8px;">
+          Confidence: --
+        </p>
+      </div>
+
+      <!-- 4 Bins Fill Level Card -->
+      <div class="stat-card bins-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Giám sát mức đầy 4 khu vực chứa rác (Ultrasonic HC-SR04)</span>
+          <span class="stat-card-icon">📊</span>
+        </div>
+
+        <div class="bins-grid">
+          <!-- Aluminum Bin -->
+          <div class="bin-box aluminum">
+            <div class="bin-header">
+              <span class="bin-name">🥫 Thùng Nhôm</span>
+              <span class="bin-angle">Servo: 30°</span>
+            </div>
+            <div class="bin-percent" id="valAluminum">0%</div>
+            <div class="bin-progress-bg">
+              <div id="barAluminum" class="bin-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div id="tagAluminum" class="bin-status-tag">BÌNH THƯỜNG</div>
+          </div>
+
+          <!-- Steel Bin -->
+          <div class="bin-box steel">
+            <div class="bin-header">
+              <span class="bin-name">🔩 Thùng Sắt/Thép</span>
+              <span class="bin-angle">Servo: 70°</span>
+            </div>
+            <div class="bin-percent" id="valSteel">0%</div>
+            <div class="bin-progress-bg">
+              <div id="barSteel" class="bin-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div id="tagSteel" class="bin-status-tag">BÌNH THƯỜNG</div>
+          </div>
+
+          <!-- Plastic Bin -->
+          <div class="bin-box plastic">
+            <div class="bin-header">
+              <span class="bin-name">🧴 Thùng Nhựa</span>
+              <span class="bin-angle">Servo: 110°</span>
+            </div>
+            <div class="bin-percent" id="valPlastic">0%</div>
+            <div class="bin-progress-bg">
+              <div id="barPlastic" class="bin-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div id="tagPlastic" class="bin-status-tag">BÌNH THƯỜNG</div>
+          </div>
+
+          <!-- Inspection Bin -->
+          <div class="bin-box unknown">
+            <div class="bin-header">
+              <span class="bin-name">❓ Khu vực Kiểm tra</span>
+              <span class="bin-angle">Servo: 150°</span>
+            </div>
+            <div class="bin-percent" id="valInspection">0%</div>
+            <div class="bin-progress-bg">
+              <div id="barInspection" class="bin-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div id="tagInspection" class="bin-status-tag">BÌNH THƯỜNG</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Interactive Remote Control Panel -->
+    <section class="card-section">
+      <div class="section-header">
+        <div class="section-title">
+          <span>🎮</span>
+          <h2>Bảng Điều Khiển Tương Tác Trực Tuyến & Thử Nghiệm</h2>
+        </div>
+        <div class="section-subtitle">Gửi lệnh điều khiển trực tiếp tới ESP32 qua MQTT hoặc chạy kịch bản thử nghiệm</div>
+      </div>
+
+      <div class="control-panel">
+        <button id="btnDetect" class="btn-ctrl detect" title="Mô phỏng cảm biến quang phát hiện rác">
+          <span>▶</span> Phát hiện vật thể (IR Sensor)
+        </button>
+
+        <button id="btnAluminum" class="btn-ctrl aluminum" title="Mô phỏng kết quả AI: Nhôm">
+          <span>🥫</span> Nhôm (30°)
+        </button>
+
+        <button id="btnSteel" class="btn-ctrl steel" title="Mô phỏng kết quả AI: Thép">
+          <span>🔩</span> Sắt/Thép (70°)
+        </button>
+
+        <button id="btnPlastic" class="btn-ctrl plastic" title="Mô phỏng kết quả AI: Nhựa">
+          <span>🧴</span> Nhựa (110°)
+        </button>
+
+        <button id="btnUnknown" class="btn-ctrl unknown" title="Mô phỏng kết quả AI: Khác">
+          <span>❓</span> Không xác định (150°)
+        </button>
+
+        <button id="btnEmptyBin" class="btn-ctrl empty-bin" title="Xác nhận nhân công đã dọn sạch thùng rác đầy">
+          <span>♻️</span> Dọn thùng (Empty Bin)
+        </button>
+
+        <button id="btnAutoTest" class="btn-ctrl auto-test" title="Chạy kịch bản ngẫu nhiên liên tục để demo">
+          <span>🎲</span> Chạy tự động demo
+        </button>
+
+        <button id="btnEmergency" class="btn-ctrl emergency" title="Dừng khẩn cấp toàn bộ hệ thống">
+          <span>🛑</span> DỪNG KHẨN CẤP (E-STOP)
+        </button>
+      </div>
+    </section>
+
+    <!-- Section 4: System Event Log Feed -->
+    <section class="card-section log-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span>📜</span>
+          <h2>Nhật Ký Hoạt Động & Sự Kiện Hệ Thống (Real-time Event Feed)</h2>
+        </div>
+        <button id="btnClearLog" class="btn-mode" style="padding: 4px 12px; font-size: 0.75rem;">
+          Xóa log
+        </button>
+      </div>
+
+      <div id="logContainer" class="log-container">
+        <!-- Log entries will be inserted here dynamically -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =====================================================
+       FOOTER
+       ===================================================== -->
+  <footer class="footer">
+    <p>Học phần: Thực tập / Đồ án Internet of Things (IoT) &bull; Đề tài 59: Hệ thống Phân loại Rác Tái chế Thông minh &bull; Nhóm 13</p>
+    <p style="margin-top: 4px; color: var(--text-dim);">Thành viên: Võ Đăng Khoa &bull; Đỗ Quang Liêm &bull; Phạm Anh Nhật Minh</p>
+  </footer>
+
+  <!-- Application Logic Scripts -->
+  <script src="js/animation.js"></script>
+  <script src="js/mqtt-client.js"></script>
+  <script src="js/simulator.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
