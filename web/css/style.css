@@ -318,8 +318,7 @@ body {
 .stat-card-title {
   font-size: 0.82rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
   color: var(--text-muted);
 }
 
@@ -441,7 +440,6 @@ body {
 .bin-status-tag {
   font-size: 0.75rem;
   font-weight: 700;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 

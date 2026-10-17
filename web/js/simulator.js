@@ -27,10 +27,10 @@ class RecyclingSimulator {
     };
 
     this.materials = [
-      { type: 'ALUMINUM', angle: 30,  bin: 'ALUMINUM BIN',     name: 'Nhôm' },
-      { type: 'STEEL',    angle: 70,  bin: 'STEEL BIN',        name: 'Thép' },
-      { type: 'PLASTIC',  angle: 110, bin: 'PLASTIC BIN',      name: 'Nhựa' },
-      { type: 'UNKNOWN',  angle: 150, bin: 'INSPECTION AREA',  name: 'Không xác định' }
+      { type: 'ALUMINUM', angle: 30,  bin: 'Thùng nhôm',       name: 'Nhôm' },
+      { type: 'STEEL',    angle: 70,  bin: 'Thùng sắt/thép',   name: 'Sắt/thép' },
+      { type: 'PLASTIC',  angle: 110, bin: 'Thùng nhựa',       name: 'Nhựa' },
+      { type: 'UNKNOWN',  angle: 150, bin: 'Thùng rác khác',   name: 'Rác khác' }
     ];
 
     this.autoTimer = null;
@@ -39,7 +39,7 @@ class RecyclingSimulator {
 
   startAutoSimulation() {
     this.isAutoRunning = true;
-    this.onLog('Khởi động kịch bản tự động phân loại mô phỏng (Offline Demo).', 'info');
+    this.onLog('Bắt đầu tự động mô phỏng phân loại.', 'info');
     this.runNextCycle();
   }
 
@@ -49,7 +49,7 @@ class RecyclingSimulator {
       clearTimeout(this.autoTimer);
       this.autoTimer = null;
     }
-    this.onLog('Đã dừng kịch bản tự động.', 'info');
+    this.onLog('Đã dừng tự động mô phỏng.', 'info');
   }
 
   runNextCycle() {
@@ -86,8 +86,8 @@ class RecyclingSimulator {
     if (this.state !== 'WAIT_MATERIAL' || this.emergency) return;
     this.state = 'WAIT_AI';
     this.conveyor = false;
-    this.onLog('Cảm biến phát hiện vật thể rác trên băng chuyền. Chờ nhận diện AI...', 'warning');
-    this.emitState('Material detected! Waiting for AI...');
+    this.onLog('Cảm biến phát hiện vật thể. Đang chờ nhận diện...', 'warning');
+    this.emitState('Phát hiện vật thể. Đang chờ nhận diện...');
   }
 
   triggerClassify(materialType) {
@@ -103,8 +103,8 @@ class RecyclingSimulator {
       this.servoAngle = 90;
       this.warning = true;
       this.full = true;
-      this.onLog(`CẢNH BÁO: Thùng chứa ${mat.name} ĐÃ ĐẦY (>=90%)! Ngắt băng chuyền, khóa phân loại. Vui lòng bấm DỌN THÙNG.`, 'error');
-      this.emitState(`WARNING: ${mat.bin} FULL!`);
+      this.onLog(`Cảnh báo: Thùng ${mat.name.toLowerCase()} đã đầy (≥ 90%)! Đã ngắt băng chuyền. Vui lòng đặt lại thùng chứa.`, 'error');
+      this.emitState(`Cảnh báo: ${mat.bin} đã đầy!`);
       return;
     }
 
@@ -115,8 +115,8 @@ class RecyclingSimulator {
     this.servoAngle = mat.angle;
     this.confidence = (88 + Math.random() * 11).toFixed(1);
 
-    this.onLog(`AI nhận diện: ${mat.name} (${mat.type}) - Độ tin cậy: ${this.confidence}%. Servo gạt: ${mat.angle}°.`, 'success');
-    this.emitState(`Sorting ${mat.type} to ${mat.bin}`);
+    this.onLog(`Nhận diện: ${mat.name} - Độ tin cậy: ${this.confidence}%. Góc servo: ${mat.angle}°.`, 'success');
+    this.emitState(`Phân loại ${mat.name} vào ${mat.bin}`);
   }
 
   completeSorting(mat) {
@@ -127,14 +127,14 @@ class RecyclingSimulator {
 
     this.servoAngle = 90;
     this.state = 'WAIT_MATERIAL';
-    this.onLog(`Đã phân loại xong vật thể vào ${mat.bin}. Mức đầy hiện tại: ${this.bins[binKey]}%.`, 'info');
+    this.onLog(`Đã phân loại xong vào ${mat.bin}. Mức đầy: ${this.bins[binKey]}%.`, 'info');
 
     // Warning check
     if (this.bins[binKey] >= 80 && this.bins[binKey] < 90) {
-      this.onLog(`Chú ý: ${mat.bin} sắp đầy (${this.bins[binKey]}%)!`, 'warning');
+      this.onLog(`Lưu ý: ${mat.bin} sắp đầy (${this.bins[binKey]}%).`, 'warning');
     }
 
-    this.emitState('System ready. Waiting for material...');
+    this.emitState('Hệ thống sẵn sàng. Chờ vật thể...');
   }
 
   triggerEmergency() {
@@ -143,16 +143,16 @@ class RecyclingSimulator {
       this.state = 'EMERGENCY_STOPPED';
       this.conveyor = false;
       this.servoAngle = 90;
-      this.onLog('NGUY HIỂM: NÚT DỪNG KHẨN CẤP ĐÃ ĐƯỢC KÍCH HOẠT! Dừng toàn bộ hệ thống.', 'error');
-      this.emitState('EMERGENCY STOP ACTIVATED!');
+      this.onLog('Cảnh báo: Đã kích hoạt dừng khẩn cấp! Dừng toàn bộ hệ thống.', 'error');
+      this.emitState('Đã dừng khẩn cấp!');
     } else {
       this.state = 'WAIT_MATERIAL';
       this.conveyor = true;
       this.servoAngle = 90;
       this.currentMaterial = '';
       this.currentBin = '';
-      this.onLog('Hủy dừng khẩn cấp. Khởi động lại băng chuyền.', 'success');
-      this.emitState('Emergency reset. System ready.');
+      this.onLog('Đã tắt dừng khẩn cấp. Khởi động lại hệ thống.', 'success');
+      this.emitState('Đã tắt dừng khẩn cấp. Hệ thống sẵn sàng.');
     }
   }
 
@@ -176,8 +176,8 @@ class RecyclingSimulator {
       this.conveyor = true;
     }
 
-    this.onLog('Nhân công đã dọn sạch thùng rác. Mức đầy đã được đặt về 0%. Tiếp tục vận hành.', 'success');
-    this.emitState('Bin emptied. System ready.');
+    this.onLog('Đã dọn thùng chứa. Mức đầy đặt lại về 0%. Tiếp tục hoạt động.', 'success');
+    this.emitState('Đã đặt lại thùng chứa. Hệ thống sẵn sàng.');
   }
 
   emitState(msg) {

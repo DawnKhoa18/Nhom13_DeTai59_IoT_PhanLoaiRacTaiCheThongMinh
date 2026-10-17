@@ -83,21 +83,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (status === 'CONNECTED') {
         statusPill.className = 'status-pill online';
-        statusText.innerText = 'ONLINE (Wokwi MQTT)';
-        addLog(`Kết nối thành công Broker MQTT: ${url}`, 'success');
+        statusText.innerText = 'Đã kết nối (MQTT)';
+        addLog(`Đã kết nối broker MQTT: ${url}`, 'success');
       } else if (status === 'CONNECTING') {
         statusPill.className = 'status-pill';
-        statusText.innerText = 'Đang kết nối MQTT...';
+        statusText.innerText = 'Đang kết nối...';
       } else {
         statusPill.className = 'status-pill offline';
-        statusText.innerText = 'OFFLINE (Chưa có Wokwi)';
+        statusText.innerText = 'Chưa kết nối';
       }
     },
     onMessageReceived: (topic, data) => {
       if (currentMode === 'LIVE') {
         renderTelemetry(data);
         if (data.message) {
-          addLog(`[Wokwi ESP32] ${data.message}`, data.emergency ? 'error' : (data.warning ? 'warning' : 'info'));
+          addLog(`[ESP32] ${data.message}`, data.emergency ? 'error' : (data.warning ? 'warning' : 'info'));
         }
       }
     },
@@ -128,14 +128,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Conveyor running
     const isRunning = !!data.conveyor;
-    valConveyorStatus.innerText = isRunning ? 'ĐANG CHẠY' : 'ĐÃ DỪNG';
+    valConveyorStatus.innerText = isRunning ? 'Đang chạy' : 'Đã dừng';
     valConveyorStatus.style.color = isRunning ? '#10b981' : '#ef4444';
     anim.setConveyor(isRunning);
 
     const overlayConveyorState = document.getElementById('overlayConveyorState');
     const overlayIRState = document.getElementById('overlayIRState');
-    if (overlayConveyorState) overlayConveyorState.innerText = isRunning ? 'Vận hành' : 'Đã dừng';
-    if (overlayIRState) overlayIRState.innerText = state === 'WAIT_AI' ? 'Phát hiện rác' : 'Chờ vật thể';
+    if (overlayConveyorState) overlayConveyorState.innerText = isRunning ? 'Đang chạy' : 'Đã dừng';
+    if (overlayIRState) overlayIRState.innerText = state === 'WAIT_AI' ? 'Có vật thể' : 'Chờ vật thể';
 
     // Servo angle
     const angle = data.servoAngle !== undefined ? data.servoAngle : 90;
@@ -145,9 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // AI Camera state and laser scanning
     if (state === 'WAIT_AI') {
       anim.setScanning(true);
-      valAiResult.innerText = 'Đang quét AI...';
+      valAiResult.innerText = 'Đang nhận diện...';
       valAiResult.style.color = '#38bdf8';
-      valAiConfidence.innerText = 'Analyzing...';
+      valAiConfidence.innerText = 'Đang xử lý...';
     } else {
       anim.setScanning(false);
       if (data.material && data.material !== '') {
@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         valAiResult.innerText = 'Chờ vật thể';
         valAiResult.style.color = '#9ca3af';
-        valAiConfidence.innerText = 'Confidence: --';
+        valAiConfidence.innerText = 'Độ tin cậy: --';
       }
     }
 
@@ -178,10 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Alerts (Emergency or Full)
     if (data.emergency) {
       alertBanner.className = 'alert-banner emergency active';
-      alertText.innerText = '⚠️ CẢNH BÁO: DỪNG KHẨN CẤP ĐANG BẬT! Hệ thống bị khóa an toàn.';
+      alertText.innerText = '⚠️ Cảnh báo: Đã dừng khẩn cấp! Hệ thống tạm ngưng hoạt động.';
     } else if (data.full || state === 'BIN_FULL_STOP') {
       alertBanner.className = 'alert-banner full active';
-      alertText.innerText = '⚠️ CẢNH BÁO: THÙNG RÁC ĐÃ ĐẦY (>=90%)! Vui lòng đổ rác và nhấn EMPTY BIN.';
+      alertText.innerText = '⚠️ Cảnh báo: Thùng chứa đã đầy (≥ 90%)! Vui lòng dọn rác để tiếp tục.';
     } else {
       alertBanner.className = 'alert-banner';
     }
@@ -196,13 +196,13 @@ document.addEventListener('DOMContentLoaded', () => {
     el.val.innerText = `${val}%`;
 
     if (val >= 90) {
-      el.tag.innerText = 'ĐÃ ĐẦY (FULL)';
+      el.tag.innerText = 'Đã đầy';
       el.tag.className = 'bin-status-tag full';
     } else if (val >= 80) {
-      el.tag.innerText = 'SẮP ĐẦY';
+      el.tag.innerText = 'Sắp đầy';
       el.tag.className = 'bin-status-tag warning';
     } else {
-      el.tag.innerText = 'BÌNH THƯỜNG';
+      el.tag.innerText = 'Bình thường';
       el.tag.className = 'bin-status-tag';
     }
   }
@@ -212,17 +212,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentMode === 'LIVE') {
       currentMode = 'SIMULATOR';
       statusPill.className = 'status-pill simulating';
-      statusText.innerText = 'SIMULATOR (Offline Demo)';
-      btnToggleMode.innerHTML = '<span>⚡ Chuyển sang Live IoT</span>';
-      addLog('Đã chuyển sang Chế độ Mô phỏng Offline (Simulator Mode).', 'warning');
-      simulator.emitState('Chế độ mô phỏng kích hoạt.');
+      statusText.innerText = 'Mô phỏng (Ngoại tuyến)';
+      btnToggleMode.innerHTML = '<span>⚡ Chế độ trực tuyến</span>';
+      addLog('Đã chuyển sang chế độ mô phỏng.', 'warning');
+      simulator.emitState('Bắt đầu mô phỏng.');
     } else {
       currentMode = 'LIVE';
       simulator.stopAutoSimulation();
-      btnToggleMode.innerHTML = '<span>🎮 Chuyển sang Demo Offline</span>';
+      btnToggleMode.innerHTML = '<span>🎮 Chế độ mô phỏng</span>';
       statusPill.className = 'status-pill';
-      statusText.innerText = 'Đang kết nối Live MQTT...';
-      addLog('Đã chuyển sang Chế độ Live IoT từ Wokwi.', 'info');
+      statusText.innerText = 'Đang kết nối MQTT...';
+      addLog('Đã chuyển sang chế độ trực tuyến.', 'info');
       mqttClient.connect();
     }
   });
@@ -232,9 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentMode === 'LIVE') {
       const sent = mqttClient.sendCommand(cmd);
       if (sent) {
-        addLog(`Đã gửi lệnh điều khiển tới ESP32: [${cmd}]`, 'info');
+        addLog(`Đã gửi lệnh tới ESP32: [${cmd}]`, 'info');
       } else {
-        addLog(`Chưa kết nối Wokwi MQTT. Chuyển sang Demo Offline để test ngay!`, 'warning');
+        addLog('Chưa kết nối MQTT. Hãy chuyển sang chế độ mô phỏng để thử nghiệm.', 'warning');
       }
     } else {
       // Simulator mode actions
@@ -263,30 +263,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (simulator.isAutoRunning) {
       simulator.stopAutoSimulation();
-      btnAutoTest.innerText = '🎲 Chạy tự động demo';
+      btnAutoTest.innerText = '🎲 Tự động thử nghiệm';
       btnAutoTest.classList.remove('active');
     } else {
       simulator.startAutoSimulation();
-      btnAutoTest.innerText = '⏸ Dừng tự động demo';
+      btnAutoTest.innerText = '⏸ Dừng thử nghiệm';
       btnAutoTest.classList.add('active');
     }
   });
 
   document.getElementById('btnClearLog').addEventListener('click', () => {
     logContainer.innerHTML = '';
-    addLog('Đã xóa lịch sử sự kiện.', 'info');
+    addLog('Đã xóa nhật ký.', 'info');
   });
 
   const selectBroker = document.getElementById('selectBroker');
   if (selectBroker) {
     selectBroker.addEventListener('change', (e) => {
       const brokerChoice = e.target.value;
-      addLog(`Đang chuyển sang ${brokerChoice === 'local' ? 'Local Docker Mosquitto (port 9001)' : 'Cloud EMQX (broker.emqx.io)'}...`, 'info');
+      addLog(`Đang chuyển sang ${brokerChoice === 'local' ? 'broker cục bộ (Mosquitto :9001)' : 'broker đám mây (EMQX)'}...`, 'info');
       mqttClient.switchBroker(brokerChoice);
     });
   }
 
   // Initial connect
-  addLog('Hệ thống Web Dashboard đã sẵn sàng.', 'success');
+  addLog('Giao diện giám sát đã sẵn sàng.', 'success');
   mqttClient.connect();
 });

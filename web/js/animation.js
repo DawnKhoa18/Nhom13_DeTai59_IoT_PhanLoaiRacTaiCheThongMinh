@@ -34,9 +34,9 @@ class ConveyorAnimation {
     // Chute target positions
     this.chutes = [
       { id: 'ALUMINUM', name: 'Nhôm (30°)', angle: 30, color: '#10b981', targetYRatio: 0.25 },
-      { id: 'STEEL',    name: 'Thép (70°)', angle: 70, color: '#06b6d4', targetYRatio: 0.42 },
+      { id: 'STEEL',    name: 'Sắt/thép (70°)', angle: 70, color: '#06b6d4', targetYRatio: 0.42 },
       { id: 'PLASTIC',  name: 'Nhựa (110°)', angle: 110, color: '#f97316', targetYRatio: 0.60 },
-      { id: 'UNKNOWN',  name: 'Kiểm tra (150°)', angle: 150, color: '#ef4444', targetYRatio: 0.80 }
+      { id: 'UNKNOWN',  name: 'Rác khác (150°)', angle: 150, color: '#ef4444', targetYRatio: 0.80 }
     ];
 
     // Start loop
@@ -78,7 +78,7 @@ class ConveyorAnimation {
     } else if (materialType === 'STEEL') {
       color = '#06b6d4';
       icon = '🔩';
-      label = 'Thép';
+      label = 'Sắt/thép';
     } else if (materialType === 'PLASTIC') {
       color = '#f97316';
       icon = '🧴';
@@ -188,7 +188,7 @@ class ConveyorAnimation {
     if (this.isConveyorRunning) {
       ctx.fillStyle = 'rgba(6, 182, 212, 0.4)';
       ctx.font = `bold ${13 * this.scale}px sans-serif`;
-      ctx.fillText('► ► ►  BĂNG CHUYỀN HOẠT ĐỘNG', 80 * this.scale, beltY + beltHeight / 2 + 5 * this.scale);
+      ctx.fillText('► ► ►  Băng chuyền đang chạy', 80 * this.scale, beltY + beltHeight / 2 + 5 * this.scale);
     }
   }
 
@@ -223,7 +223,7 @@ class ConveyorAnimation {
     ctx.fillStyle = '#94a3b8';
     ctx.font = `${10 * this.scale}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('IR CẢM BIẾN', sensorX, beltY - 38 * this.scale);
+    ctx.fillText('Cảm biến IR', sensorX, beltY - 38 * this.scale);
   }
 
   drawAIScanner() {
@@ -287,7 +287,7 @@ class ConveyorAnimation {
     ctx.fillStyle = '#38bdf8';
     ctx.font = `bold ${10 * this.scale}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('AI VISION CAM', scannerX, beltY - 62 * this.scale);
+    ctx.fillText('Camera AI', scannerX, beltY - 62 * this.scale);
   }
 
   drawServoMechanism() {
@@ -341,7 +341,7 @@ class ConveyorAnimation {
     ctx.fillStyle = '#f59e0b';
     ctx.font = `bold ${11 * this.scale}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`SERVO SG90 (${Math.round(this.currentAngle)}°)`, servoX, beltY - 24 * this.scale);
+    ctx.fillText(`Servo SG90 (${Math.round(this.currentAngle)}°)`, servoX, beltY - 24 * this.scale);
   }
 
   drawChutesAndBins() {
