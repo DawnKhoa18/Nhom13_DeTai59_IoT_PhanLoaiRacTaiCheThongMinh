@@ -93,6 +93,23 @@ class RecyclingMqttClient {
     }
   }
 
+  switchBroker(type) {
+    this.disconnect();
+    if (type === 'local') {
+      this.brokerHost = window.location.hostname || 'localhost';
+      this.brokerPort = 9001;
+      this.brokerProtocol = 'ws';
+      this.brokerPath = '';
+    } else {
+      this.brokerHost = 'broker.emqx.io';
+      const isHttps = window.location.protocol === 'https:';
+      this.brokerPort = isHttps ? 8084 : 8083;
+      this.brokerProtocol = isHttps ? 'wss' : 'ws';
+      this.brokerPath = '/mqtt';
+    }
+    this.connect();
+  }
+
   sendCommand(cmd) {
     if (!this.client || !this.isConnected) {
       console.warn('[MQTT] Cannot send command, MQTT not connected.');

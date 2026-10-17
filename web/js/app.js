@@ -277,6 +277,15 @@ document.addEventListener('DOMContentLoaded', () => {
     addLog('Đã xóa lịch sử sự kiện.', 'info');
   });
 
+  const selectBroker = document.getElementById('selectBroker');
+  if (selectBroker) {
+    selectBroker.addEventListener('change', (e) => {
+      const brokerChoice = e.target.value;
+      addLog(`Đang chuyển sang ${brokerChoice === 'local' ? 'Local Docker Mosquitto (port 9001)' : 'Cloud EMQX (broker.emqx.io)'}...`, 'info');
+      mqttClient.switchBroker(brokerChoice);
+    });
+  }
+
   // Initial connect
   addLog('Hệ thống Web Dashboard đã sẵn sàng.', 'success');
   mqttClient.connect();

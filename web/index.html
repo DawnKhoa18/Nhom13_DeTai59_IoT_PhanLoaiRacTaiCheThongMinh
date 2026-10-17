@@ -26,6 +26,12 @@
     </div>
 
     <div class="header-controls">
+      <!-- Broker Selection -->
+      <select id="selectBroker" class="btn-mode" style="padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chọn Broker MQTT">
+        <option value="cloud">🌐 Cloud MQTT (EMQX / Wokwi)</option>
+        <option value="local">🏠 Local Docker (Mosquitto :9001)</option>
+      </select>
+
       <!-- Connection Status Pill -->
       <div id="statusPill" class="status-pill">
         <span class="status-dot"></span>

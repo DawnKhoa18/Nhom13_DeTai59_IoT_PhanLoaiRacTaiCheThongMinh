@@ -1,0 +1,52 @@
+services:
+  # =====================================================
+  # 1. WEB DASHBOARD (Nginx Alpine)
+  # http://localhost:8088
+  # =====================================================
+  web-dashboard:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    container_name: smart_recycling_web
+    ports:
+      - "8088:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    depends_on:
+      - mqtt-broker
+
+  # =====================================================
+  # 2. LOCAL MQTT BROKER (Eclipse Mosquitto)
+  # TCP: 1883 | WebSockets: 9001
+  # =====================================================
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: smart_recycling_mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  # =====================================================
+  # 3. FIRMWARE BUILDER (PlatformIO Core)
+  # Run: docker compose run --rm firmware-builder
+  # =====================================================
+  firmware-builder:
+    build:
+      context: .
+      dockerfile: docker/platformio/Dockerfile
+    container_name: smart_recycling_builder
+    volumes:
+      - .:/workspace
+      - pio_cache:/root/.platformio
+    working_dir: /workspace
+    command: run
+    profiles:
+      - tools
+
+volumes:
+  pio_cache:
+    name: smart_recycling_pio_cache
