@@ -5,12 +5,22 @@
 #include <ArduinoJson.h>
 
 // =====================================================
-// WIFI & MQTT CONFIGURATION (Wokwi & IoT Gateway)
+// WIFI & MQTT CONFIGURATION
+// 1: Mạch Đám mây (broker.emqx.io) - Tiện lợi cho Wokwi qua Internet
+// 0: Mạch Cục bộ (Mosquitto Docker qua host.wokwi.internal hoặc IP LAN máy tính)
 // =====================================================
+#define USE_CLOUD_BROKER 1
+
 const char* WIFI_SSID         = "Wokwi-GUEST";
 const char* WIFI_PASS         = "";
+
+#if USE_CLOUD_BROKER
 const char* MQTT_BROKER       = "broker.emqx.io";
 const int   MQTT_PORT         = 1883;
+#else
+const char* MQTT_BROKER       = "host.wokwi.internal"; // hoặc IP máy tính chạy Docker Mosquitto
+const int   MQTT_PORT         = 1883;
+#endif
 const char* MQTT_TOPIC_STATUS = "nhom13/recycling/status";
 const char* MQTT_TOPIC_COMMAND= "nhom13/recycling/command";
 
@@ -112,6 +122,8 @@ const unsigned long SORTING_TIME = 2000;
 
 String currentMaterial = "";
 String currentBin      = "";
+String currentSize     = "M";
+int currentIncrement   = 10;
 
 // Lưu loại vật liệu bị chặn vì thùng đầy
 String blockedMaterial = "";
@@ -120,7 +132,8 @@ String blockedMaterial = "";
 void activateEmergency();
 void resetEmergency();
 void emptyBlockedBin();
-void startSorting(const char *material, int angle, const char *binName);
+void startSorting(const char *material, int angle, const char *binName, int increment = 10, const char *sizeName = "M");
+void increaseBinLevel(String material, int increment = 10);
 void stopConveyor();
 void startConveyor();
 bool isBinFull(String material);
@@ -148,6 +161,8 @@ void publishTelemetry(const char* customMsg) {
   doc["conveyor"] = conveyorRunning;
   doc["servoAngle"] = currentServoAngle;
   doc["material"] = currentMaterial;
+  doc["size"] = currentSize;
+  doc["increment"] = currentIncrement;
   doc["bin"] = currentBin;
   doc["confidence"] = (currentMaterial == "" || currentMaterial == "UNKNOWN") ? 0.0 : 96.5;
 
@@ -193,37 +208,59 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print("]: ");
   Serial.println(msg);
 
-  if (msg == "EMERGENCY" || msg.indexOf("\"cmd\":\"emergency\"") >= 0) {
+  String upper = msg;
+  upper.toUpperCase();
+
+  // Extract size suffix if provided (e.g. "ALUMINUM:L", "PLASTIC:S")
+  String sizeStr = "M";
+  int increment = 10;
+  int colonIndex = upper.indexOf(":");
+  if (colonIndex >= 0) {
+    String suffix = upper.substring(colonIndex + 1);
+    suffix.trim();
+    if (suffix == "S" || suffix == "SMALL") {
+      sizeStr = "S";
+      increment = 5;
+    } else if (suffix == "L" || suffix == "LARGE") {
+      sizeStr = "L";
+      increment = 20;
+    } else {
+      sizeStr = "M";
+      increment = 10;
+    }
+  }
+
+  if (upper.indexOf("EMERGENCY") >= 0) {
     if (!emergencyActive) {
       activateEmergency();
     } else {
       resetEmergency();
     }
-  } else if (msg == "EMPTY_BIN" || msg.indexOf("\"cmd\":\"empty_bin\"") >= 0) {
-    if (state == BIN_FULL_STOP) {
+  } else if (upper.indexOf("EMPTY_BIN") >= 0 || upper.indexOf("EMPTY") >= 0) {
+    if (state == BIN_FULL_STOP || isBinFull("ALUMINUM") || isBinFull("STEEL") || isBinFull("PLASTIC") || isBinFull("UNKNOWN")) {
       emptyBlockedBin();
     }
-  } else if (msg == "DETECT" || msg.indexOf("\"cmd\":\"detect\"") >= 0) {
+  } else if (upper.indexOf("DETECT") >= 0) {
     if (state == WAIT_MATERIAL) {
       stopConveyor();
       state = WAIT_AI;
       publishTelemetry("Material detected via Web!");
     }
-  } else if (msg == "ALUMINUM" || msg.indexOf("\"cmd\":\"aluminum\"") >= 0) {
-    if (state == WAIT_AI) {
-      startSorting("ALUMINUM", SERVO_ALUMINUM, "ALUMINUM BIN");
+  } else if (upper.indexOf("ALUMINUM") >= 0) {
+    if (state == WAIT_AI || state == WAIT_MATERIAL) {
+      startSorting("ALUMINUM", SERVO_ALUMINUM, "ALUMINUM BIN", increment, sizeStr.c_str());
     }
-  } else if (msg == "STEEL" || msg.indexOf("\"cmd\":\"steel\"") >= 0) {
-    if (state == WAIT_AI) {
-      startSorting("STEEL", SERVO_STEEL, "STEEL BIN");
+  } else if (upper.indexOf("STEEL") >= 0) {
+    if (state == WAIT_AI || state == WAIT_MATERIAL) {
+      startSorting("STEEL", SERVO_STEEL, "STEEL BIN", increment, sizeStr.c_str());
     }
-  } else if (msg == "PLASTIC" || msg.indexOf("\"cmd\":\"plastic\"") >= 0) {
-    if (state == WAIT_AI) {
-      startSorting("PLASTIC", SERVO_PLASTIC, "PLASTIC BIN");
+  } else if (upper.indexOf("PLASTIC") >= 0) {
+    if (state == WAIT_AI || state == WAIT_MATERIAL) {
+      startSorting("PLASTIC", SERVO_PLASTIC, "PLASTIC BIN", increment, sizeStr.c_str());
     }
-  } else if (msg == "UNKNOWN" || msg.indexOf("\"cmd\":\"unknown\"") >= 0) {
-    if (state == WAIT_AI) {
-      startSorting("UNKNOWN", SERVO_UNKNOWN, "INSPECTION AREA");
+  } else if (upper.indexOf("UNKNOWN") >= 0) {
+    if (state == WAIT_AI || state == WAIT_MATERIAL) {
+      startSorting("UNKNOWN", SERVO_UNKNOWN, "INSPECTION AREA", increment, sizeStr.c_str());
     }
   }
 }
@@ -248,6 +285,7 @@ void setupNetwork() {
   }
 
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setBufferSize(512);
   mqttClient.setCallback(mqttCallback);
 }
 
@@ -265,7 +303,9 @@ void maintainMqtt() {
       Serial.println(MQTT_BROKER);
       if (mqttClient.connect(clientId.c_str())) {
         Serial.println("MQTT Connected successfully!");
-        mqttClient.subscribe(MQTT_TOPIC_COMMAND);
+        bool subOk = mqttClient.subscribe(MQTT_TOPIC_COMMAND);
+        Serial.print("Subscribed to command topic: ");
+        Serial.println(subOk ? "SUCCESS" : "FAILED");
         publishTelemetry("ESP32 Online & Ready");
       } else {
         Serial.print("MQTT connect failed, state=");
@@ -436,13 +476,13 @@ void printBinStatus(
 // =====================================================
 // INCREASE BIN LEVEL
 // =====================================================
-void increaseBinLevel(String material) {
+void increaseBinLevel(String material, int increment) {
 
   int level = 0;
 
   if (material == "ALUMINUM") {
 
-    aluminumLevel += BIN_INCREMENT;
+    aluminumLevel += increment;
 
     if (aluminumLevel > 100) {
       aluminumLevel = 100;
@@ -458,7 +498,7 @@ void increaseBinLevel(String material) {
 
   else if (material == "STEEL") {
 
-    steelLevel += BIN_INCREMENT;
+    steelLevel += increment;
 
     if (steelLevel > 100) {
       steelLevel = 100;
@@ -474,7 +514,7 @@ void increaseBinLevel(String material) {
 
   else if (material == "PLASTIC") {
 
-    plasticLevel += BIN_INCREMENT;
+    plasticLevel += increment;
 
     if (plasticLevel > 100) {
       plasticLevel = 100;
@@ -490,7 +530,7 @@ void increaseBinLevel(String material) {
 
   else if (material == "UNKNOWN") {
 
-    inspectionLevel += BIN_INCREMENT;
+    inspectionLevel += increment;
 
     if (inspectionLevel > 100) {
       inspectionLevel = 100;
@@ -678,6 +718,8 @@ void emptyBlockedBin() {
 
   currentMaterial = "";
   currentBin = "";
+  currentSize = "M";
+  currentIncrement = 10;
 
   // Servo về Home
   sortingServo.write(
@@ -721,7 +763,9 @@ void emptyBlockedBin() {
 void startSorting(
   const char *material,
   int angle,
-  const char *binName
+  const char *binName,
+  int increment,
+  const char *sizeName
 ) {
 
   // Kiểm tra thùng trước
@@ -745,9 +789,14 @@ void startSorting(
     "AI Result: "
   );
 
-  Serial.println(
+  Serial.print(
     material
   );
+  Serial.print(" [Size: ");
+  Serial.print(sizeName);
+  Serial.print(", +");
+  Serial.print(increment);
+  Serial.println("%]");
 
   Serial.print(
     "Servo angle: "
@@ -774,6 +823,12 @@ void startSorting(
 
   currentBin =
     binName;
+
+  currentSize =
+    sizeName;
+
+  currentIncrement =
+    increment;
 
   sortingServo.write(
     angle
@@ -878,6 +933,8 @@ void resetEmergency() {
 
   currentMaterial = "";
   currentBin = "";
+  currentSize = "M";
+  currentIncrement = 10;
 
   state = WAIT_MATERIAL;
 
@@ -1302,7 +1359,8 @@ void loop() {
       );
 
       increaseBinLevel(
-        currentMaterial
+        currentMaterial,
+        currentIncrement
       );
 
       sortingServo.write(
@@ -1326,6 +1384,8 @@ void loop() {
 
       currentMaterial = "";
       currentBin = "";
+      currentSize = "M";
+      currentIncrement = 10;
 
       state =
         WAIT_MATERIAL;

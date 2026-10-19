@@ -6,15 +6,15 @@
 class RecyclingMqttClient {
   constructor(options = {}) {
     this.brokerHost = options.brokerHost || 'broker.emqx.io';
-    // Use WSS (8084) if on HTTPS or WS (8083) if on HTTP/file:
-    const isHttps = window.location.protocol === 'https:';
-    this.brokerPort = options.brokerPort || (isHttps ? 8084 : 8083);
-    this.brokerProtocol = options.protocol || (isHttps ? 'wss' : 'ws');
+    // Use secure WebSocket WSS (8084) for cloud broker (reliable across HTTPS, HTTP, and file:)
+    this.brokerPort = options.brokerPort || 8084;
+    this.brokerProtocol = options.protocol || 'wss';
     this.brokerPath = options.path || '/mqtt';
 
     this.topicStatus = options.topicStatus || 'nhom13/recycling/status';
     this.topicCommand = options.topicCommand || 'nhom13/recycling/command';
 
+    this.brokerType = 'cloud';
     this.client = null;
     this.isConnected = false;
 
@@ -29,20 +29,28 @@ class RecyclingMqttClient {
     const url = `${this.brokerProtocol}://${this.brokerHost}:${this.brokerPort}${this.brokerPath}`;
 
     console.log(`[MQTT] Connecting to ${url} as ${clientId}...`);
-    this.onStatusChange('CONNECTING', url);
+    this.onStatusChange('CONNECTING', url, this.brokerType);
+
+    if (typeof mqtt === 'undefined') {
+      console.error('[MQTT] mqtt.js library is not loaded!');
+      this.isConnected = false;
+      this.onStatusChange('DISCONNECTED', null, this.brokerType);
+      this.onError(new Error('Thư viện MQTT.js chưa được tải'));
+      return;
+    }
 
     try {
       this.client = mqtt.connect(url, {
         clientId: clientId,
         clean: true,
-        connectTimeout: 6000,
+        connectTimeout: 8000,
         reconnectPeriod: 4000
       });
 
       this.client.on('connect', () => {
         this.isConnected = true;
         console.log(`[MQTT] Connected to broker successfully!`);
-        this.onStatusChange('CONNECTED', url);
+        this.onStatusChange('CONNECTED', url, this.brokerType);
 
         // Subscribe to status topic
         this.client.subscribe(this.topicStatus, { qos: 0 }, (err) => {
@@ -66,20 +74,24 @@ class RecyclingMqttClient {
 
       this.client.on('reconnect', () => {
         console.log('[MQTT] Reconnecting...');
-        this.onStatusChange('RECONNECTING');
+        this.onStatusChange('RECONNECTING', null, this.brokerType);
       });
 
       this.client.on('close', () => {
         this.isConnected = false;
-        this.onStatusChange('DISCONNECTED');
+        this.onStatusChange('DISCONNECTED', null, this.brokerType);
       });
 
       this.client.on('error', (err) => {
         console.error('[MQTT] Error:', err);
+        this.isConnected = false;
+        this.onStatusChange('DISCONNECTED', null, this.brokerType);
         this.onError(err);
       });
     } catch (e) {
       console.error('[MQTT] Connect exception:', e);
+      this.isConnected = false;
+      this.onStatusChange('DISCONNECTED', null, this.brokerType);
       this.onError(e);
     }
   }
@@ -89,12 +101,13 @@ class RecyclingMqttClient {
       this.client.end(true);
       this.client = null;
       this.isConnected = false;
-      this.onStatusChange('DISCONNECTED');
+      this.onStatusChange('DISCONNECTED', null, this.brokerType);
     }
   }
 
   switchBroker(type) {
     this.disconnect();
+    this.brokerType = type;
     if (type === 'local') {
       this.brokerHost = window.location.hostname || 'localhost';
       this.brokerPort = 9001;
@@ -102,9 +115,8 @@ class RecyclingMqttClient {
       this.brokerPath = '';
     } else {
       this.brokerHost = 'broker.emqx.io';
-      const isHttps = window.location.protocol === 'https:';
-      this.brokerPort = isHttps ? 8084 : 8083;
-      this.brokerProtocol = isHttps ? 'wss' : 'ws';
+      this.brokerPort = 8084;
+      this.brokerProtocol = 'wss';
       this.brokerPath = '/mqtt';
     }
     this.connect();

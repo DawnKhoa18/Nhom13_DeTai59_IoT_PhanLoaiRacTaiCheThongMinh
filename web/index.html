@@ -8,8 +8,8 @@
   <!-- Font and Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
 
-  <!-- MQTT.js CDN -->
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- MQTT.js Local Library (Reliable & Offline Ready) -->
+  <script src="js/mqtt.min.js"></script>
 </head>
 <body>
 
@@ -18,7 +18,6 @@
        ===================================================== -->
   <header class="header">
     <div class="brand">
-      <div class="brand-icon">♻️</div>
       <div class="brand-text">
         <h1>Hệ thống phân loại rác thông minh</h1>
         <p>Đề tài 59: Phân loại rác tái chế thông minh (Nhóm 13)</p>
@@ -27,21 +26,16 @@
 
     <div class="header-controls">
       <!-- Broker Selection -->
-      <select id="selectBroker" class="btn-mode" style="padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chọn broker MQTT">
-        <option value="cloud">🌐 Broker đám mây (EMQX)</option>
-        <option value="local">🏠 Broker cục bộ (Mosquitto :9001)</option>
+      <select id="selectBroker" class="btn-mode" style="padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chọn kết nối broker MQTT cho mạch ESP32">
+        <option value="cloud">🌐 Mạch đám mây (EMQX)</option>
+        <option value="local">🏠 Mạch cục bộ (Mosquitto :9001)</option>
       </select>
 
       <!-- Connection Status Pill -->
       <div id="statusPill" class="status-pill">
         <span class="status-dot"></span>
-        <span id="statusText">Đang khởi tạo...</span>
+        <span id="statusText">Đang kết nối mạch...</span>
       </div>
-
-      <!-- Mode Switcher -->
-      <button id="btnToggleMode" class="btn-mode" title="Chuyển đổi giữa chế độ trực tuyến và mô phỏng">
-        <span>🎮 Chế độ mô phỏng</span>
-      </button>
     </div>
   </header>
 
@@ -55,201 +49,230 @@
       <span id="alertText">⚠️ Cảnh báo hệ thống</span>
     </div>
 
-    <!-- Section 1: Conveyor Belt & Station Animation -->
-    <section class="card-section">
-      <div class="section-header">
-        <div class="section-title">
-          <span>🏭</span>
-          <h2>Mô phỏng băng chuyền và cơ cấu phân loại</h2>
-        </div>
-        <div class="section-subtitle">Mô phỏng hoạt động của băng chuyền và servo gạt rác</div>
-      </div>
+    <!-- 2-Column Dashboard Layout -->
+    <div class="dashboard-layout">
 
-      <div class="canvas-wrapper">
-        <canvas id="conveyorCanvas"></canvas>
-        <div class="canvas-overlay-badges">
-          <div class="overlay-badge">Băng chuyền: <span id="overlayConveyorState">Đang chạy</span></div>
-          <div class="overlay-badge">Cảm biến IR: <span id="overlayIRState">Chờ vật thể</span></div>
-        </div>
-      </div>
-    </section>
+      <!-- ================= CỘT TRÁI: Mô phỏng & Điều khiển ================= -->
+      <div class="col-visual-control">
 
-    <!-- Section 2: Telemetry Metrics Grid -->
-    <section class="dashboard-grid">
-      <!-- FSM State Card -->
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">Trạng thái hệ thống (FSM)</span>
-          <span class="stat-card-icon">⚙️</span>
-        </div>
-        <div class="stat-main-value">
-          <span id="badgeSystemState" class="stat-badge badge-state-wait">WAIT_MATERIAL</span>
-        </div>
-        <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 8px;">Máy trạng thái trên ESP32</p>
-      </div>
-
-      <!-- Conveyor Status Card -->
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">Động cơ băng chuyền</span>
-          <span class="stat-card-icon">🔄</span>
-        </div>
-        <div class="stat-main-value" id="valConveyorStatus" style="color: #10b981;">
-          Đang chạy
-        </div>
-        <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 8px;">Động cơ bước qua driver A4988 (hoặc DC/L298N)</p>
-      </div>
-
-      <!-- Servo Angle Card -->
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">Góc quay servo</span>
-          <span class="stat-card-icon">📐</span>
-        </div>
-        <div class="stat-main-value" id="valServoAngle" style="color: #f59e0b;">
-          90°
-        </div>
-        <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 8px;">Gốc: 90° | Nhôm: 30° | Sắt/thép: 70° | Nhựa: 110° | Khác: 150°</p>
-      </div>
-
-      <!-- AI Classification Result Card -->
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">Kết quả nhận diện AI</span>
-          <span class="stat-card-icon">👁️</span>
-        </div>
-        <div class="stat-main-value" id="valAiResult" style="color: #9ca3af;">
-          Chờ vật thể
-        </div>
-        <p id="valAiConfidence" style="font-size: 0.82rem; color: var(--accent-cyan); font-weight: 600; margin-top: 8px;">
-          Độ tin cậy: --
-        </p>
-      </div>
-
-      <!-- 4 Bins Fill Level Card -->
-      <div class="stat-card bins-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">Mức đầy các thùng chứa (Cảm biến siêu âm HC-SR04)</span>
-          <span class="stat-card-icon">📊</span>
-        </div>
-
-        <div class="bins-grid">
-          <!-- Aluminum Bin -->
-          <div class="bin-box aluminum">
-            <div class="bin-header">
-              <span class="bin-name">🥫 Thùng nhôm</span>
-              <span class="bin-angle">Servo: 30°</span>
+        <!-- Khung 1: Mô phỏng băng chuyền -->
+        <section class="card-section">
+          <div class="section-header">
+            <div class="section-title">
+              <h2>Mô phỏng băng chuyền</h2>
             </div>
-            <div class="bin-percent" id="valAluminum">0%</div>
-            <div class="bin-progress-bg">
-              <div id="barAluminum" class="bin-progress-bar" style="width: 0%;"></div>
-            </div>
-            <div id="tagAluminum" class="bin-status-tag">Bình thường</div>
+            <div class="section-subtitle">Hoạt động thời gian thực của băng chuyền và servo gạt</div>
           </div>
 
-          <!-- Steel Bin -->
-          <div class="bin-box steel">
-            <div class="bin-header">
-              <span class="bin-name">🔩 Thùng sắt/thép</span>
-              <span class="bin-angle">Servo: 70°</span>
+          <div class="canvas-wrapper">
+            <canvas id="conveyorCanvas"></canvas>
+            <div class="canvas-overlay-badges">
+              <div class="overlay-badge">Băng chuyền: <span id="overlayConveyorState">Đang chạy</span></div>
+              <div class="overlay-badge">Cảm biến IR: <span id="overlayIRState">Chờ vật thể</span></div>
             </div>
-            <div class="bin-percent" id="valSteel">0%</div>
-            <div class="bin-progress-bg">
-              <div id="barSteel" class="bin-progress-bar" style="width: 0%;"></div>
+          </div>
+        </section>
+
+        <!-- Khung 2: Bảng điều khiển (ĐẶT NGAY DƯỚI BĂNG CHUYỀN) -->
+        <section class="card-section">
+          <div class="section-header">
+            <div class="section-title">
+              <h2>Bảng điều khiển</h2>
             </div>
-            <div id="tagSteel" class="bin-status-tag">Bình thường</div>
+            <div class="section-subtitle">Phân tách thành nhóm gửi rác và nhóm điều khiển vận hành</div>
           </div>
 
-          <!-- Plastic Bin -->
-          <div class="bin-box plastic">
-            <div class="bin-header">
-              <span class="bin-name">🧴 Thùng nhựa</span>
-              <span class="bin-angle">Servo: 110°</span>
+          <div class="control-panel-horizontal">
+            <!-- Nhóm 1: Nhóm gửi rác -->
+            <div class="ctrl-subgroup">
+              <span class="ctrl-subgroup-label">📦 Gửi rác:</span>
+              <button id="btnAluminum" class="btn-ctrl aluminum" title="Phân loại lon nhôm vào Thùng nhôm (30°)">
+                <span>🥫</span> Nhôm (30°)
+              </button>
+              <button id="btnSteel" class="btn-ctrl steel" title="Phân loại kim loại vào Thùng sắt/thép (70°)">
+                <span>🔩</span> Sắt/thép (70°)
+              </button>
+              <button id="btnPlastic" class="btn-ctrl plastic" title="Phân loại chai nhựa vào Thùng nhựa (110°)">
+                <span>🧴</span> Nhựa (110°)
+              </button>
+              <button id="btnUnknown" class="btn-ctrl unknown" title="Phân loại vào Thùng rác khác (150°)">
+                <span>❓</span> Rác khác (150°)
+              </button>
+              <button id="btnLiving" class="btn-ctrl living" title="Mô phỏng phát hiện sinh vật sống trên băng chuyền (Tự động kích hoạt Dừng khẩn cấp)">
+                <span>🐭</span> Sinh vật sống
+              </button>
             </div>
-            <div class="bin-percent" id="valPlastic">0%</div>
-            <div class="bin-progress-bg">
-              <div id="barPlastic" class="bin-progress-bar" style="width: 0%;"></div>
+
+            <div class="ctrl-divider"></div>
+
+            <!-- Nhóm 2: Nhóm điều khiển -->
+            <div class="ctrl-subgroup">
+              <span class="ctrl-subgroup-label control">🎛️ Điều khiển:</span>
+              <button id="btnEmptyBin" class="btn-ctrl empty-bin" title="Xác nhận đã đổ rác, đặt mức đầy về 0%">
+                <span>♻️</span> Đặt lại thùng chứa
+              </button>
+              <button id="btnAutoTest" class="btn-ctrl auto-test" title="Chạy kịch bản tự động thử nghiệm">
+                <span>🎲</span> Tự động thử nghiệm
+              </button>
+              <button id="btnEmergency" class="btn-ctrl emergency" title="Dừng khẩn cấp toàn bộ hệ thống">
+                <span>🛑</span> Dừng khẩn cấp (E-Stop)
+              </button>
             </div>
-            <div id="tagPlastic" class="bin-status-tag">Bình thường</div>
+          </div>
+        </section>
+
+        <!-- Khung 3: Nhật ký hoạt động -->
+        <section class="card-section log-card">
+          <div class="section-header">
+            <div class="section-title">
+              <span>📜</span>
+              <h2>Nhật ký hoạt động hệ thống</h2>
+            </div>
+            <button id="btnClearLog" class="btn-mode" style="padding: 3px 10px; font-size: 0.75rem;">
+              Xóa nhật ký
+            </button>
           </div>
 
-          <!-- Inspection Bin -->
-          <div class="bin-box unknown">
-            <div class="bin-header">
-              <span class="bin-name">❓ Thùng rác khác</span>
-              <span class="bin-angle">Servo: 150°</span>
-            </div>
-            <div class="bin-percent" id="valInspection">0%</div>
-            <div class="bin-progress-bg">
-              <div id="barInspection" class="bin-progress-bar" style="width: 0%;"></div>
-            </div>
-            <div id="tagInspection" class="bin-status-tag">Bình thường</div>
+          <div id="logContainer" class="log-container">
+            <!-- Log entries will be inserted here dynamically -->
           </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <!-- Section 3: Interactive Remote Control Panel -->
-    <section class="card-section">
-      <div class="section-header">
-        <div class="section-title">
-          <span>🎮</span>
-          <h2>Bảng điều khiển và thử nghiệm</h2>
-        </div>
-        <div class="section-subtitle">Gửi lệnh điều khiển tới ESP32 qua MQTT hoặc chạy mô phỏng</div>
       </div>
 
-      <div class="control-panel">
-        <button id="btnDetect" class="btn-ctrl detect" title="Mô phỏng cảm biến quang phát hiện rác">
-          <span>▶</span> Kích hoạt cảm biến IR
-        </button>
+      <!-- ================= CỘT PHẢI: Thông số & Mức đầy thùng ================= -->
+      <div class="col-telemetry">
 
-        <button id="btnAluminum" class="btn-ctrl aluminum" title="Mô phỏng kết quả AI: Nhôm">
-          <span>🥫</span> Nhôm (30°)
-        </button>
+        <!-- Khung 4: Thông số vận hành (Lưới 2x2) -->
+        <section class="card-section">
+          <div class="section-header">
+            <div class="section-title">
+              <span>📊</span>
+              <h2>Thông số</h2>
+            </div>
+          </div>
 
-        <button id="btnSteel" class="btn-ctrl steel" title="Mô phỏng kết quả AI: Thép">
-          <span>🔩</span> Sắt/thép (70°)
-        </button>
+          <div class="telemetry-grid-2x2">
+            <!-- FSM State Card -->
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Trạng thái (FSM)</span>
+                <span class="stat-card-icon">⚙️</span>
+              </div>
+              <div class="stat-main-value">
+                <span id="badgeSystemState" class="stat-badge badge-state-wait">WAIT_MATERIAL</span>
+              </div>
+              <p class="stat-desc">Máy trạng thái ESP32</p>
+            </div>
 
-        <button id="btnPlastic" class="btn-ctrl plastic" title="Mô phỏng kết quả AI: Nhựa">
-          <span>🧴</span> Nhựa (110°)
-        </button>
+            <!-- Conveyor Status Card -->
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Băng chuyền</span>
+                <span class="stat-card-icon">🔄</span>
+              </div>
+              <div class="stat-main-value" id="valConveyorStatus" style="color: #15803d;">
+                Đang chạy
+              </div>
+              <p class="stat-desc">Động cơ qua driver A4988 / L298N</p>
+            </div>
 
-        <button id="btnUnknown" class="btn-ctrl unknown" title="Mô phỏng kết quả AI: Khác">
-          <span>❓</span> Rác khác (150°)
-        </button>
+            <!-- Servo Angle Card -->
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Góc quay servo</span>
+                <span class="stat-card-icon">📐</span>
+              </div>
+              <div class="stat-main-value" id="valServoAngle" style="color: #b45309;">
+                90°
+              </div>
+              <p class="stat-desc">Góc: 90° | 30° | 70° | 110° | 150°</p>
+            </div>
 
-        <button id="btnEmptyBin" class="btn-ctrl empty-bin" title="Xác nhận đã đổ rác, đặt mức đầy về 0%">
-          <span>♻️</span> Đặt lại thùng chứa
-        </button>
+            <!-- AI Classification Result Card -->
+            <div class="stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Nhận diện AI</span>
+                <span class="stat-card-icon">👁️</span>
+              </div>
+              <div class="stat-main-value" id="valAiResult" style="color: #475569;">
+                Chờ vật thể
+              </div>
+              <p id="valAiConfidence" class="stat-desc" style="color: var(--accent-cyan); font-weight: 700;">
+                Độ tin cậy: --
+              </p>
+              <p id="valAiSize" class="stat-desc" style="color: #b45309; font-weight: 700; font-size: 0.78rem; margin-top: 2px;">
+                Kích thước: --
+              </p>
+            </div>
+          </div>
+        </section>
 
-        <button id="btnAutoTest" class="btn-ctrl auto-test" title="Chạy kịch bản tự động thử nghiệm">
-          <span>🎲</span> Tự động thử nghiệm
-        </button>
+        <!-- Khung 5: Mức đầy 4 thùng chứa (Lưới 2x2) -->
+        <section class="card-section">
+          <div class="section-header">
+            <div class="section-title">
+              <h2>Mức đầy thùng chứa</h2>
+            </div>
+          </div>
 
-        <button id="btnEmergency" class="btn-ctrl emergency" title="Dừng khẩn cấp toàn bộ hệ thống">
-          <span>🛑</span> Dừng khẩn cấp (E-Stop)
-        </button>
+          <div class="bins-grid-2x2">
+            <!-- Aluminum Bin -->
+            <div class="bin-box aluminum">
+              <div class="bin-header">
+                <span class="bin-name">🥫 Thùng nhôm</span>
+                <span class="bin-angle">Servo: 30°</span>
+              </div>
+              <div class="bin-percent" id="valAluminum">0%</div>
+              <div class="bin-progress-bg">
+                <div id="barAluminum" class="bin-progress-bar" style="width: 0%;"></div>
+              </div>
+              <div id="tagAluminum" class="bin-status-tag">Bình thường</div>
+            </div>
+
+            <!-- Steel Bin -->
+            <div class="bin-box steel">
+              <div class="bin-header">
+                <span class="bin-name">🔩 Thùng sắt/thép</span>
+                <span class="bin-angle">Servo: 70°</span>
+              </div>
+              <div class="bin-percent" id="valSteel">0%</div>
+              <div class="bin-progress-bg">
+                <div id="barSteel" class="bin-progress-bar" style="width: 0%;"></div>
+              </div>
+              <div id="tagSteel" class="bin-status-tag">Bình thường</div>
+            </div>
+
+            <!-- Plastic Bin -->
+            <div class="bin-box plastic">
+              <div class="bin-header">
+                <span class="bin-name">🧴 Thùng nhựa</span>
+                <span class="bin-angle">Servo: 110°</span>
+              </div>
+              <div class="bin-percent" id="valPlastic">0%</div>
+              <div class="bin-progress-bg">
+                <div id="barPlastic" class="bin-progress-bar" style="width: 0%;"></div>
+              </div>
+              <div id="tagPlastic" class="bin-status-tag">Bình thường</div>
+            </div>
+
+            <!-- Inspection Bin -->
+            <div class="bin-box unknown">
+              <div class="bin-header">
+                <span class="bin-name">❓ Thùng rác khác</span>
+                <span class="bin-angle">Servo: 150°</span>
+              </div>
+              <div class="bin-percent" id="valInspection">0%</div>
+              <div class="bin-progress-bg">
+                <div id="barInspection" class="bin-progress-bar" style="width: 0%;"></div>
+              </div>
+              <div id="tagInspection" class="bin-status-tag">Bình thường</div>
+            </div>
+          </div>
+        </section>
+
       </div>
-    </section>
-
-    <!-- Section 4: System Event Log Feed -->
-    <section class="card-section log-card">
-      <div class="section-header">
-        <div class="section-title">
-          <span>📜</span>
-          <h2>Nhật ký hoạt động hệ thống</h2>
-        </div>
-        <button id="btnClearLog" class="btn-mode" style="padding: 4px 12px; font-size: 0.75rem;">
-          Xóa nhật ký
-        </button>
-      </div>
-
-      <div id="logContainer" class="log-container">
-        <!-- Log entries will be inserted here dynamically -->
-      </div>
-    </section>
+    </div>
 
   </main>
 
@@ -264,7 +287,6 @@
   <!-- Application Logic Scripts -->
   <script src="js/animation.js"></script>
   <script src="js/mqtt-client.js"></script>
-  <script src="js/simulator.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
