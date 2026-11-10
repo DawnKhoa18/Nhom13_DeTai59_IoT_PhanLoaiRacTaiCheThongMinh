@@ -5,7 +5,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Local bin fill tracking for immediate visual feedback
+  // 1. Local bin fill tracking & active sort session synchronization
   let localBins = {
     aluminum: 0,
     steel: 0,
@@ -13,29 +13,81 @@ document.addEventListener('DOMContentLoaded', () => {
     inspection: 0
   };
 
+  const typeToBinKey = {
+    'ALUMINUM': 'aluminum',
+    'STEEL':    'steel',
+    'PLASTIC':  'plastic',
+    'UNKNOWN':  'inspection'
+  };
+
+  let activeSortSession = null;
+  let lastEmptyBinAt = 0;
+
   // 2. Initialize Conveyor Animation Engine with real-time station callbacks
   const anim = new ConveyorAnimation('conveyorCanvas', {
-    onItemScanned: (type, size, increment, sizeLabel) => {
+    onItemScanned: (type, size, increment, sizeLabel, item) => {
       if (type === 'LIVING') {
-        valAiResult.innerText = '🐭 SINH VẬT SỐNG!';
+        activeSortSession = null;
+        valAiResult.innerText = 'SINH VẬT SỐNG!';
         valAiResult.style.color = '#db2777';
         valAiConfidence.innerText = 'Độ tin cậy: 100%';
         if (valAiSize) {
           valAiSize.innerText = 'CẢNH BÁO: DỪNG KHẨN CẤP!';
         }
-        addLog('🚨 [CẢNH BÁO KHẨN CẤP] Máy quét AI phát hiện SINH VẬT SỐNG trên băng chuyền! Hệ thống tự động kích hoạt DỪNG KHẨN CẤP (E-Stop).', 'error');
+        addLog('[CẢNH BÁO KHẨN CẤP] Máy quét AI phát hiện SINH VẬT SỐNG trên băng chuyền! Hệ thống tự động kích hoạt DỪNG KHẨN CẤP (E-Stop).', 'error');
+        logSystemEvent('LIVING_BIO', 'DANGER', 'Camera AI phát hiện sinh vật sống trên băng chuyền - tự động dừng khẩn cấp');
         triggerAction('EMERGENCY');
         return;
       }
 
+      const binKey = typeToBinKey[type] || 'inspection';
+      const inc = increment || 10;
+
+      // Safety pre-check: if target bin is already full (>= 90%), block sorting immediately
+      if ((localBins[binKey] || 0) >= 90) {
+        activeSortSession = null;
+        setServerSortingWithWatchdog(false);
+        anim.setConveyor(false);
+        if (typeof anim.rewindUnroutedScannedItems === 'function') {
+          anim.rewindUnroutedScannedItems();
+        }
+        badgeSystemState.innerText = 'BIN_FULL_STOP';
+        badgeSystemState.className = 'stat-badge badge-state-danger';
+        valConveyorStatus.innerText = 'Đã dừng';
+        valConveyorStatus.style.color = '#b91c1c';
+        alertBanner.className = 'alert-banner full active';
+        alertText.innerText = 'Cảnh báo: Thùng chứa đã đầy (≥ 90%)! Vui lòng đặt lại thùng chứa.';
+        lastState = 'BIN_FULL_STOP';
+        if (isAutoTesting) {
+          stopAutoTest('Thùng chứa đã đầy (≥ 90%)');
+        }
+        if (isMqttConnected) {
+          mqttClient.sendCommand(`${type}:${size || 'M'}`);
+        }
+        addLog(`[Chặn phân loại] Thùng đích của [${type}] đã đầy (${localBins[binKey]}% ≥ 90%). Băng chuyền tạm dừng an toàn!`, 'warning');
+        logSystemEvent('BIN_FULL', 'WARNING', `Thùng đích của ${type} đã đầy (${localBins[binKey]}%), chặn phân loại`);
+        return;
+      }
+
+      activeSortSession = {
+        item: item || null,
+        type: type,
+        binKey: binKey,
+        increment: inc,
+        sizeLabel: sizeLabel || 'Vừa',
+        scannedAt: Date.now(),
+        espSawSorting: false
+      };
+
       badgeSystemState.innerText = 'SORTING';
       badgeSystemState.className = 'stat-badge badge-state-sorting';
+      setServerSortingWithWatchdog(true);
 
       const labelMap = {
-        'ALUMINUM': { name: 'Nhôm (Aluminum)', color: '#15803d' },
-        'STEEL':    { name: 'Sắt/thép (Steel)', color: '#0369a1' },
-        'PLASTIC':  { name: 'Nhựa (Plastic)', color: '#c2410c' },
-        'UNKNOWN':  { name: 'Rác khác (Unknown)', color: '#b91c1c' }
+        'ALUMINUM': { name: 'Nhôm (Aluminum)', color: '#0f766e' },
+        'STEEL':    { name: 'Sắt/thép (Steel)', color: '#1d4ed8' },
+        'PLASTIC':  { name: 'Nhựa (Plastic)', color: '#d97706' },
+        'UNKNOWN':  { name: 'Rác khác (Unknown)', color: '#475569' }
       };
       const info = labelMap[type] || { name: type, color: '#15803d' };
 
@@ -43,51 +95,106 @@ document.addEventListener('DOMContentLoaded', () => {
       valAiResult.style.color = info.color;
       valAiConfidence.innerText = type === 'UNKNOWN' ? 'Độ tin cậy: 42.0%' : 'Độ tin cậy: 96.5%';
       if (valAiSize) {
-        valAiSize.innerText = `Kích thước: ${sizeLabel || 'Vừa'} (+${increment || 10}%)`;
+        valAiSize.innerText = `Kích thước: ${sizeLabel || 'Vừa'} (+${inc}%)`;
+      }
+
+      // Phát lệnh MQTT cho ESP32 ngay khi vật thể chạm trạm Camera AI
+      const mqttPayload = `${type}:${size || 'M'}`;
+      if (isMqttConnected) {
+        mqttClient.sendCommand(mqttPayload);
+        addLog(`[Camera AI] Nhận diện [${info.name}] (${sizeLabel || 'Vừa'}). Đã gửi lệnh tới ESP32: [${mqttPayload}]`, 'info');
       }
     },
     onItemDeflected: (type, angle) => {
       valServoAngle.innerText = `${angle}°`;
     },
-    onItemSorted: (type, size, increment, sizeLabel) => {
+    onItemSorted: (type, size, increment, sizeLabel, item) => {
       if (type === 'LIVING') return;
-      const keyMap = {
-        'ALUMINUM': 'aluminum',
-        'STEEL':    'steel',
-        'PLASTIC':  'plastic',
-        'UNKNOWN':  'inspection'
-      };
-      const binKey = keyMap[type] || 'inspection';
+
+      const binKey = typeToBinKey[type] || 'inspection';
       const inc = increment || 10;
-      localBins[binKey] = Math.min(100, (localBins[binKey] || 0) + inc);
-      updateBinUI(binKey, localBins[binKey]);
 
-      valServoAngle.innerText = '90°';
-      valAiResult.innerText = 'Chờ vật thể';
-      valAiResult.style.color = '#475569';
-      valAiConfidence.innerText = 'Độ tin cậy: --';
-      if (valAiSize) valAiSize.innerText = 'Kích thước: --';
+      // Cập nhật ngay mức đầy thùng chứa khi vật thể rơi vào thùng (đảm bảo chỉ cộng 1 lần duy nhất cho mỗi vật thể)
+      if (!item || !item.binCounted) {
+        if (item) item.binCounted = true;
+        localBins[binKey] = Math.min(100, (localBins[binKey] || 0) + inc);
+        updateBinUI(binKey, localBins[binKey]);
+      }
 
-      badgeSystemState.innerText = 'WAIT_MATERIAL';
-      badgeSystemState.className = 'stat-badge badge-state-wait';
+      // Ghi nhận thống kê khối lượng: mỗi vật thể chỉ được ghi đúng 1 lần
+      if (window.wasteStatistics && (!item || !item.statRecorded)) {
+        if (item) item.statRecorded = true;
+        try {
+          window.wasteStatistics.recordSortedItem(type, size, inc, sizeLabel);
+        } catch (e) {
+          console.warn('[WasteStatistics] recordSortedItem lỗi:', e);
+        }
+      }
+
+      if (!anim.hasActiveSortingItems()) {
+        valServoAngle.innerText = '90°';
+        valAiResult.innerText = 'Chờ vật thể';
+        valAiResult.style.color = '#475569';
+        valAiConfidence.innerText = 'Độ tin cậy: --';
+        if (valAiSize) valAiSize.innerText = 'Kích thước: --';
+      }
 
       const nameMap = {
-        'aluminum': 'Thùng nhôm',
-        'steel': 'Thùng sắt/thép',
-        'plastic': 'Thùng nhựa',
-        'inspection': 'Thùng rác khác'
+        'ALUMINUM': 'Thùng nhôm',
+        'STEEL':    'Thùng sắt/thép',
+        'PLASTIC':  'Thùng nhựa',
+        'UNKNOWN':  'Thùng rác khác'
       };
-      addLog(`[Phân loại] 1 vật thể (${sizeLabel || 'Vừa'}, +${inc}%) đã vào ${nameMap[binKey]}. Mức đầy hiện tại: ${localBins[binKey]}%.`, 'info');
+      addLog(`[Phân loại] 1 vật thể ${nameMap[type] || type} (${sizeLabel || 'Vừa'}, +${inc}%) đã rơi vào thùng -> Mức đầy: ${localBins[binKey]}%.`, 'success');
+
+      if (localBins[binKey] >= 90) {
+        alertBanner.className = 'alert-banner full active';
+        alertText.innerText = 'Cảnh báo: Thùng chứa đã đầy (≥ 90%)! Vui lòng đặt lại thùng chứa.';
+        logSystemEvent('BIN_FULL', 'WARNING', `${nameMap[type] || type} đạt ${localBins[binKey]}% (≥ 90%)`);
+      }
     }
   });
 
   // 3. Global State
   let isMqttConnected = false;
   let isEsp32Alive = false;
+  let lastEsp32SeenAt = 0;
   let activeBrokerType = 'cloud';
   let lastState = 'WAIT_MATERIAL';
   let isAutoTesting = false;
   let autoTestTimer = null;
+  let serverSortingWatchdog = null;
+
+  // --- Thống kê: ghi nhật ký sự kiện an toàn (module độc lập, lỗi không ảnh hưởng hệ thống) ---
+  const lastSystemEventAt = {};
+  let lastLocalEmergencyToggleAt = 0;
+  function logSystemEvent(eventType, severity, description) {
+    if (!window.wasteStatistics || typeof window.wasteStatistics.recordEvent !== 'function') return;
+    const now = Date.now();
+    if (lastSystemEventAt[eventType] && now - lastSystemEventAt[eventType] < 3000) return; // chống ghi trùng
+    lastSystemEventAt[eventType] = now;
+    try {
+      window.wasteStatistics.recordEvent(eventType, severity, description);
+    } catch (e) {
+      console.warn('[WasteStatistics] recordEvent lỗi:', e);
+    }
+  }
+
+  function setServerSortingWithWatchdog(busy) {
+    if (serverSortingWatchdog) {
+      clearTimeout(serverSortingWatchdog);
+      serverSortingWatchdog = null;
+    }
+    anim.setServerSorting(busy);
+    if (busy) {
+      serverSortingWatchdog = setTimeout(() => {
+        activeSortSession = null;
+        if (lastState !== 'EMERGENCY_STOPPED' && lastState !== 'BIN_FULL_STOP') {
+          anim.setServerSorting(false);
+        }
+      }, 6500);
+    }
+  }
 
   // 4. UI Element References
   const statusPill = document.getElementById('statusPill');
@@ -147,10 +254,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Helper to show disconnection warning when user clicks while offline
-  function showDisconnectedWarning() {
+  function showDisconnectedWarning(reason = 'broker') {
     alertBanner.className = 'alert-banner emergency active';
-    alertText.innerText = '⚠️ Chưa kết nối mạch ESP32! Vui lòng khởi động Wokwi hoặc mạch thật.';
-    addLog('Chưa có kết nối tới mạch ESP32! Không thể gửi lệnh.', 'error');
+    if (reason === 'esp32') {
+      const brokerLabel = activeBrokerType === 'local' ? 'Cục bộ (Mosquitto :9001)' : 'Đám mây (EMQX)';
+      alertText.innerText = `Đã nối Broker [${brokerLabel}] nhưng chưa thấy mạch ESP32! Hãy bật mạch hoặc chọn đúng kênh Broker.`;
+      addLog(`Chưa nhận được tín hiệu từ mạch ESP32 trên kênh [${brokerLabel}]! Hãy kiểm tra mạch đang chạy ở chế độ Đám mây hay Cục bộ.`, 'warning');
+    } else {
+      alertText.innerText = 'Chưa kết nối tới Broker MQTT! Vui lòng kiểm tra kết nối mạng hoặc Mosquitto.';
+      addLog('Chưa có kết nối tới Broker MQTT! Không thể gửi lệnh.', 'error');
+    }
 
     setTimeout(() => {
       if (lastState !== 'EMERGENCY_STOPPED' && lastState !== 'BIN_FULL_STOP') {
@@ -194,6 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     onMessageReceived: (topic, data) => {
+      lastEsp32SeenAt = Date.now();
       if (!isEsp32Alive) {
         isEsp32Alive = true;
         const shortName = activeBrokerType === 'local' ? 'Cục bộ' : 'Đám mây';
@@ -215,18 +329,47 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderTelemetry(data) {
     if (!data) return;
 
-    // FSM State badge
+    // FSM State badge & Active Sort Session Gating
     const state = data.state || 'WAIT_MATERIAL';
-    badgeSystemState.innerText = state;
+    const isSortingCompletedMsg = !!(data.message && data.message.indexOf('Sorting completed') >= 0);
+    const isPreCommandHeartbeat = !!(
+      activeSortSession &&
+      state === 'WAIT_MATERIAL' &&
+      !activeSortSession.espSawSorting &&
+      !isSortingCompletedMsg &&
+      (Date.now() - activeSortSession.scannedAt < 2200)
+    );
 
     if (state === 'EMERGENCY_STOPPED') {
+      activeSortSession = null;
+      badgeSystemState.innerText = state;
       badgeSystemState.className = 'stat-badge badge-state-danger';
+      setServerSortingWithWatchdog(false);
     } else if (state === 'BIN_FULL_STOP') {
+      activeSortSession = null;
+      badgeSystemState.innerText = state;
       badgeSystemState.className = 'stat-badge badge-state-danger';
-    } else if (state === 'SORTING') {
+      setServerSortingWithWatchdog(false);
+    } else if (state === 'SORTING' || isPreCommandHeartbeat) {
+      if (state === 'SORTING' && activeSortSession) {
+        activeSortSession.espSawSorting = true;
+      }
+      badgeSystemState.innerText = 'SORTING';
       badgeSystemState.className = 'stat-badge badge-state-sorting';
+      setServerSortingWithWatchdog(true);
     } else {
+      if (activeSortSession) {
+        if (activeSortSession.item && !activeSortSession.item.binCounted) {
+          activeSortSession.item.binCounted = true;
+          const bk = activeSortSession.binKey;
+          localBins[bk] = Math.min(100, (localBins[bk] || 0) + activeSortSession.increment);
+          updateBinUI(bk, localBins[bk]);
+        }
+        activeSortSession = null;
+      }
+      badgeSystemState.innerText = state;
       badgeSystemState.className = 'stat-badge badge-state-wait';
+      setServerSortingWithWatchdog(false);
     }
 
     // Conveyor running state
@@ -272,21 +415,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const prevSysState = lastState;
     lastState = state;
 
+    // Thống kê: ghi sự kiện khi ESP32 đổi trạng thái (bỏ qua ngay sau thao tác E-Stop trên Web để khỏi ghi trùng/sai)
+    if (Date.now() - lastLocalEmergencyToggleAt > 4000) {
+      if (state === 'EMERGENCY_STOPPED' && prevSysState !== 'EMERGENCY_STOPPED') {
+        logSystemEvent('E_STOP', 'DANGER', 'Mạch ESP32 báo trạng thái dừng khẩn cấp');
+      } else if (prevSysState === 'EMERGENCY_STOPPED' && state !== 'EMERGENCY_STOPPED') {
+        logSystemEvent('RESUME', 'SUCCESS', 'Hệ thống được mở khóa và hoạt động trở lại');
+      }
+    }
+    if (state === 'BIN_FULL_STOP' && prevSysState !== 'BIN_FULL_STOP') {
+      logSystemEvent('BIN_FULL', 'WARNING', 'ESP32 báo thùng chứa đầy - dừng phân loại');
+    }
+
+    if (prevSysState !== 'BIN_FULL_STOP' && state === 'BIN_FULL_STOP') {
+      if (anim && typeof anim.rewindUnroutedScannedItems === 'function') {
+        anim.rewindUnroutedScannedItems();
+      }
+    }
+
     if (prevSysState === 'EMERGENCY_STOPPED' && state !== 'EMERGENCY_STOPPED') {
       if (anim && typeof anim.removeLivingItems === 'function') {
         const removed = anim.removeLivingItems();
         if (removed) {
-          addLog('✅ [AN TOÀN] Đã can thiệp đưa sinh vật sống ra khỏi băng chuyền an toàn.', 'success');
+          addLog('[AN TOÀN] Đã can thiệp đưa sinh vật sống ra khỏi băng chuyền an toàn.', 'success');
         }
       }
     }
 
-    // Bins fill levels from ESP32
+    // Bins fill levels synchronized with ESP32 (protecting in-flight items from stale 0% heartbeats)
     if (data.bins) {
-      localBins.aluminum = data.bins.aluminum;
-      localBins.steel = data.bins.steel;
-      localBins.plastic = data.bins.plastic;
-      localBins.inspection = data.bins.inspection;
+      const isResetMsg = !!(
+        data.message &&
+        (data.message.indexOf('All bins emptied') >= 0 || data.message.indexOf('ESP32 Online & Ready') >= 0)
+      );
+      if (isResetMsg) {
+        if (data.message.indexOf('All bins emptied') >= 0 && Date.now() - lastEmptyBinAt > 8000 &&
+            window.wasteStatistics && typeof window.wasteStatistics.recordBinEmpty === 'function') {
+          try {
+            window.wasteStatistics.recordBinEmpty(Object.assign({}, localBins), 'ESP32_PIN12');
+          } catch (e) {
+            console.warn('[WasteStatistics] recordBinEmpty lỗi:', e);
+          }
+        }
+        localBins = { aluminum: 0, steel: 0, plastic: 0, inspection: 0 };
+      } else if (Date.now() - lastEmptyBinAt >= 3000) {
+        localBins.aluminum = Math.max(localBins.aluminum || 0, data.bins.aluminum || 0);
+        localBins.steel = Math.max(localBins.steel || 0, data.bins.steel || 0);
+        localBins.plastic = Math.max(localBins.plastic || 0, data.bins.plastic || 0);
+        localBins.inspection = Math.max(localBins.inspection || 0, data.bins.inspection || 0);
+      }
 
       updateBinUI('aluminum', localBins.aluminum);
       updateBinUI('steel', localBins.steel);
@@ -298,28 +475,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnEmergencyEl = document.getElementById('btnEmergency');
     if (data.emergency || state === 'EMERGENCY_STOPPED') {
       alertBanner.className = 'alert-banner emergency active';
-      alertText.innerText = '⚠️ Cảnh báo: Đã dừng khẩn cấp! Hệ thống tạm ngưng hoạt động.';
+      alertText.innerText = 'Cảnh báo: Đã dừng khẩn cấp! Hệ thống tạm ngưng hoạt động.';
       if (isAutoTesting) {
         stopAutoTest('Hệ thống dừng khẩn cấp (E-Stop)');
       }
       if (btnEmergencyEl) {
-        btnEmergencyEl.innerHTML = '<span>🟢</span> Mở khóa & Khởi động lại';
+        btnEmergencyEl.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 19 12 7 20 7 4"/></svg> <span>Mở khóa & Khởi động lại</span>`;
         btnEmergencyEl.classList.add('resuming');
       }
     } else if (data.full || state === 'BIN_FULL_STOP') {
       alertBanner.className = 'alert-banner full active';
-      alertText.innerText = '⚠️ Cảnh báo: Thùng chứa đã đầy (≥ 90%)! Vui lòng đặt lại thùng chứa.';
+      alertText.innerText = 'Cảnh báo: Thùng chứa đã đầy (≥ 90%)! Vui lòng đặt lại thùng chứa.';
       if (isAutoTesting) {
         stopAutoTest('Thùng chứa đã đầy (≥ 90%)');
       }
       if (btnEmergencyEl) {
-        btnEmergencyEl.innerHTML = '<span>🛑</span> Dừng khẩn cấp (E-Stop)';
+        btnEmergencyEl.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" fill="currentColor"/></svg> <span>Dừng khẩn cấp (E-Stop)</span>`;
         btnEmergencyEl.classList.remove('resuming');
       }
     } else {
       alertBanner.className = 'alert-banner';
       if (btnEmergencyEl) {
-        btnEmergencyEl.innerHTML = '<span>🛑</span> Dừng khẩn cấp (E-Stop)';
+        btnEmergencyEl.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" fill="currentColor"/></svg> <span>Dừng khẩn cấp (E-Stop)</span>`;
         btnEmergencyEl.classList.remove('resuming');
       }
     }
@@ -348,7 +525,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // 7. Direct 1-Click Action Dispatcher
   function triggerAction(cmd, chosenSize) {
     if (!isMqttConnected) {
-      showDisconnectedWarning();
+      showDisconnectedWarning('broker');
+      return;
+    }
+    if (!isEsp32Alive) {
+      showDisconnectedWarning('esp32');
       return;
     }
 
@@ -367,14 +548,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // Visual item spawn on belt queue with dynamic size
     if (cmd === 'ALUMINUM' || cmd === 'STEEL' || cmd === 'PLASTIC' || cmd === 'UNKNOWN') {
       const spawned = anim.spawnItem(cmd, null, chosenSize);
-      if (spawned && spawned.size) {
-        mqttPayload = `${cmd}:${spawned.size}`;
-      }
+      const nameMap = {
+        'ALUMINUM': 'Nhôm (30°)',
+        'STEEL':    'Sắt/thép (70°)',
+        'PLASTIC':  'Nhựa (110°)',
+        'UNKNOWN':  'Rác khác (150°)'
+      };
+      const sizeText = spawned ? ` [${spawned.sizeLabel || 'Vừa'}]` : '';
+      addLog(`[Băng chuyền] Đã nạp 1 vật thể ${nameMap[cmd] || cmd}${sizeText} vào hàng đợi băng chuyền...`, 'info');
+      return; // Lệnh MQTT sẽ được phát khi vật thể di chuyển đến trạm Camera AI
     } else if (cmd === 'LIVING') {
       anim.spawnItem('LIVING');
-      addLog('[Băng chuyền] Đã đưa 1 sinh vật sống (🐭) lên băng chuyền. Đang di chuyển tới trạm Camera AI...', 'warning');
+      addLog('[Băng chuyền] Đã đưa 1 sinh vật sống (Sinh vật sống) lên băng chuyền. Đang di chuyển tới trạm Camera AI...', 'warning');
       return;
     } else if (cmd === 'EMPTY_BIN') {
+      if (window.wasteStatistics && typeof window.wasteStatistics.recordBinEmpty === 'function') {
+        try {
+          window.wasteStatistics.recordBinEmpty(Object.assign({}, localBins), 'WEB_BUTTON');
+        } catch (e) {
+          console.warn('[WasteStatistics] recordBinEmpty lỗi:', e);
+        }
+      }
+      lastEmptyBinAt = Date.now();
+      activeSortSession = null;
+      setServerSortingWithWatchdog(false);
       localBins = { aluminum: 0, steel: 0, plastic: 0, inspection: 0 };
       updateBinUI('aluminum', 0);
       updateBinUI('steel', 0);
@@ -383,7 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
       alertBanner.className = 'alert-banner';
     } else if (cmd === 'EMERGENCY') {
       const btnEmerg = document.getElementById('btnEmergency');
+      lastLocalEmergencyToggleAt = Date.now();
       if (lastState !== 'EMERGENCY_STOPPED') {
+        logSystemEvent('E_STOP', 'DANGER', 'Dừng khẩn cấp được kích hoạt từ giao diện Web');
         anim.setConveyor(false);
         anim.setServoAngle(90);
         valConveyorStatus.innerText = 'Đã dừng';
@@ -392,9 +591,9 @@ document.addEventListener('DOMContentLoaded', () => {
         badgeSystemState.innerText = 'EMERGENCY_STOPPED';
         badgeSystemState.className = 'stat-badge badge-state-danger';
         alertBanner.className = 'alert-banner emergency active';
-        alertText.innerText = '⚠️ Cảnh báo: Đã dừng khẩn cấp! Hệ thống tạm ngưng hoạt động.';
+        alertText.innerText = 'Cảnh báo: Đã dừng khẩn cấp! Hệ thống tạm ngưng hoạt động.';
         if (btnEmerg) {
-          btnEmerg.innerHTML = '<span>🟢</span> Mở khóa & Khởi động lại';
+          btnEmerg.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 19 12 7 20 7 4"/></svg> <span>Mở khóa & Khởi động lại</span>`;
           btnEmerg.classList.add('resuming');
         }
         if (isAutoTesting) stopAutoTest('Dừng khẩn cấp (E-Stop)');
@@ -403,9 +602,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (anim && typeof anim.removeLivingItems === 'function') {
           const removed = anim.removeLivingItems();
           if (removed) {
-            addLog('✅ [AN TOÀN] Đã can thiệp đưa sinh vật sống ra khỏi băng chuyền an toàn.', 'success');
+            addLog('[AN TOÀN] Đã can thiệp đưa sinh vật sống ra khỏi băng chuyền an toàn.', 'success');
           }
         }
+        logSystemEvent('RESUME', 'SUCCESS', 'Mở khóa dừng khẩn cấp từ giao diện Web');
         anim.setConveyor(true);
         valConveyorStatus.innerText = 'Đang chạy';
         valConveyorStatus.style.color = '#15803d';
@@ -417,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
         badgeSystemState.className = 'stat-badge badge-state-wait';
         alertBanner.className = 'alert-banner';
         if (btnEmerg) {
-          btnEmerg.innerHTML = '<span>🛑</span> Dừng khẩn cấp (E-Stop)';
+          btnEmerg.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" fill="currentColor"/></svg> <span>Dừng khẩn cấp (E-Stop)</span>`;
           btnEmerg.classList.remove('resuming');
         }
         lastState = 'WAIT_MATERIAL';
@@ -433,7 +633,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // 8. Live Auto-Test Feeder (Periodically feeds items directly to ESP32)
   function startAutoTest() {
     if (!isMqttConnected) {
-      showDisconnectedWarning();
+      showDisconnectedWarning('broker');
+      return;
+    }
+    if (!isEsp32Alive) {
+      showDisconnectedWarning('esp32');
       return;
     }
     if (lastState === 'EMERGENCY_STOPPED' || lastState === 'BIN_FULL_STOP') {
@@ -442,7 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     isAutoTesting = true;
-    btnAutoTest.innerHTML = '<span>⏹️</span> Dừng thử nghiệm';
+    btnAutoTest.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> <span>Dừng thử nghiệm</span>`;
     btnAutoTest.classList.add('active');
     addLog('Bắt đầu kịch bản tự động thử nghiệm gửi lệnh tới ESP32 (chu kỳ 3.8s)...', 'success');
 
@@ -450,9 +654,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     autoTestTimer = setInterval(() => {
       if (!isAutoTesting) return;
-      if (!isMqttConnected) {
-        stopAutoTest('Mất kết nối MQTT');
-        showDisconnectedWarning();
+      if (!isMqttConnected || !isEsp32Alive) {
+        stopAutoTest(!isMqttConnected ? 'Mất kết nối MQTT' : 'Mất tín hiệu mạch ESP32');
+        showDisconnectedWarning(!isMqttConnected ? 'broker' : 'esp32');
         return;
       }
       if (lastState === 'EMERGENCY_STOPPED' || lastState === 'BIN_FULL_STOP') {
@@ -475,7 +679,7 @@ document.addEventListener('DOMContentLoaded', () => {
       clearInterval(autoTestTimer);
       autoTestTimer = null;
     }
-    btnAutoTest.innerHTML = '<span>🎲</span> Tự động thử nghiệm';
+    btnAutoTest.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> <span>Tự động thử nghiệm</span>`;
     btnAutoTest.classList.remove('active');
     if (reason) {
       addLog(`Đã dừng tự động thử nghiệm: ${reason}`, 'warning');
@@ -529,6 +733,11 @@ document.addEventListener('DOMContentLoaded', () => {
     selectBroker.addEventListener('change', (e) => {
       const brokerChoice = e.target.value;
       isEsp32Alive = false;
+      lastEsp32SeenAt = 0;
+      setServerSortingWithWatchdog(false);
+      if (anim && typeof anim.clearAllItems === 'function') {
+        anim.clearAllItems();
+      }
       if (isAutoTesting) {
         stopAutoTest('Đổi broker MQTT');
       }
@@ -536,6 +745,17 @@ document.addEventListener('DOMContentLoaded', () => {
       mqttClient.switchBroker(brokerChoice);
     });
   }
+
+  // Heartbeat liveness monitor: detect if ESP32 stopped transmitting
+  setInterval(() => {
+    if (isMqttConnected && isEsp32Alive && lastEsp32SeenAt > 0 && Date.now() - lastEsp32SeenAt > 10000) {
+      isEsp32Alive = false;
+      setServerSortingWithWatchdog(false);
+      statusPill.className = 'status-pill online';
+      statusText.innerText = 'Đã nối broker (Chờ mạch ESP32...)';
+      addLog('[Cảnh báo] Đã quá 10s không nhận được tín hiệu từ mạch ESP32. Vui lòng kiểm tra mạch hoặc kênh Broker.', 'warning');
+    }
+  }, 2500);
 
   // 11. Initial Connection
   addLog('Giao diện điều khiển trực tuyến đã sẵn sàng. Đang kết nối tới mạch ESP32...', 'info');

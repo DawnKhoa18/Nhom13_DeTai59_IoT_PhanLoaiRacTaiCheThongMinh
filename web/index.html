@@ -6,10 +6,10 @@
   <title>Bảng điều khiển phân loại rác IoT | Đề tài 59 - Nhóm 13</title>
   
   <!-- Font and Stylesheet -->
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20261110_v8">
 
   <!-- MQTT.js Local Library (Reliable & Offline Ready) -->
-  <script src="js/mqtt.min.js"></script>
+  <script src="js/mqtt.min.js?v=20261110_v8"></script>
 </head>
 <body>
 
@@ -26,9 +26,9 @@
 
     <div class="header-controls">
       <!-- Broker Selection -->
-      <select id="selectBroker" class="btn-mode" style="padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chọn kết nối broker MQTT cho mạch ESP32">
-        <option value="cloud">🌐 Mạch đám mây (EMQX)</option>
-        <option value="local">🏠 Mạch cục bộ (Mosquitto :9001)</option>
+      <select id="selectBroker" autocomplete="off" class="btn-mode" style="padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chọn kết nối broker MQTT cho mạch ESP32">
+        <option value="cloud">Mạch đám mây (EMQX)</option>
+        <option value="local">Mạch cục bộ (Mosquitto :9001)</option>
       </select>
 
       <!-- Connection Status Pill -->
@@ -46,7 +46,7 @@
 
     <!-- Emergency / Warning Alert Banner -->
     <div id="alertBanner" class="alert-banner">
-      <span id="alertText">⚠️ Cảnh báo hệ thống</span>
+      <span id="alertText">Cảnh báo hệ thống</span>
     </div>
 
     <!-- 2-Column Dashboard Layout -->
@@ -85,21 +85,51 @@
           <div class="control-panel-horizontal">
             <!-- Nhóm 1: Nhóm gửi rác -->
             <div class="ctrl-subgroup">
-              <span class="ctrl-subgroup-label">📦 Gửi rác:</span>
+              <span class="ctrl-subgroup-label">Gửi rác:</span>
               <button id="btnAluminum" class="btn-ctrl aluminum" title="Phân loại lon nhôm vào Thùng nhôm (30°)">
-                <span>🥫</span> Nhôm (30°)
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M7 5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/>
+                  <ellipse cx="12" cy="5" rx="3.5" ry="1.5"/>
+                  <line x1="7" y1="8" x2="17" y2="8"/>
+                </svg>
+                <span>Nhôm (30°)</span>
               </button>
               <button id="btnSteel" class="btn-ctrl steel" title="Phân loại kim loại vào Thùng sắt/thép (70°)">
-                <span>🔩</span> Sắt/thép (70°)
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2.7l5.7 3.3a2 2 0 0 1 1 1.7v6.6a2 2 0 0 1-1 1.7L12 19.3l-5.7-3.3a2 2 0 0 1-1-1.7V7.7a2 2 0 0 1 1-1.7L12 2.7z"/>
+                  <circle cx="12" cy="11" r="3"/>
+                </svg>
+                <span>Sắt/thép (70°)</span>
               </button>
               <button id="btnPlastic" class="btn-ctrl plastic" title="Phân loại chai nhựa vào Thùng nhựa (110°)">
-                <span>🧴</span> Nhựa (110°)
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 2h4"/>
+                  <path d="M10 5h4"/>
+                  <path d="M10 2v3"/>
+                  <path d="M14 2v3"/>
+                  <path d="M9 8a3 3 0 0 1 3-3h0a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3h0a3 3 0 0 1-3-3Z"/>
+                  <line x1="9" y1="13" x2="15" y2="13"/>
+                </svg>
+                <span>Nhựa (110°)</span>
               </button>
               <button id="btnUnknown" class="btn-ctrl unknown" title="Phân loại vào Thùng rác khác (150°)">
-                <span>❓</span> Rác khác (150°)
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/>
+                  <line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+                <span>Rác khác (150°)</span>
               </button>
               <button id="btnLiving" class="btn-ctrl living" title="Mô phỏng phát hiện sinh vật sống trên băng chuyền (Tự động kích hoạt Dừng khẩn cấp)">
-                <span>🐭</span> Sinh vật sống
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="5" r="1.5"/>
+                  <circle cx="7" cy="8.5" r="1.5"/>
+                  <circle cx="17" cy="8.5" r="1.5"/>
+                  <path d="M8 15.5c0-2.5 1.8-4.5 4-4.5s4 2 4 4.5c0 2-1.5 3.5-4 3.5s-4-1.5-4-3.5z"/>
+                </svg>
+                <span>Sinh vật sống</span>
               </button>
             </div>
 
@@ -107,15 +137,28 @@
 
             <!-- Nhóm 2: Nhóm điều khiển -->
             <div class="ctrl-subgroup">
-              <span class="ctrl-subgroup-label control">🎛️ Điều khiển:</span>
+              <span class="ctrl-subgroup-label control">Điều khiển:</span>
               <button id="btnEmptyBin" class="btn-ctrl empty-bin" title="Xác nhận đã đổ rác, đặt mức đầy về 0%">
-                <span>♻️</span> Đặt lại thùng chứa
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                  <path d="M21 3v5h-5"/>
+                  <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                  <path d="M3 21v-5h5"/>
+                </svg>
+                <span>Đặt lại thùng chứa</span>
               </button>
               <button id="btnAutoTest" class="btn-ctrl auto-test" title="Chạy kịch bản tự động thử nghiệm">
-                <span>🎲</span> Tự động thử nghiệm
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span>Tự động thử nghiệm</span>
               </button>
               <button id="btnEmergency" class="btn-ctrl emergency" title="Dừng khẩn cấp toàn bộ hệ thống">
-                <span>🛑</span> Dừng khẩn cấp (E-Stop)
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9"/>
+                  <rect x="9" y="9" width="6" height="6" fill="currentColor"/>
+                </svg>
+                <span>Dừng khẩn cấp (E-Stop)</span>
               </button>
             </div>
           </div>
@@ -125,7 +168,6 @@
         <section class="card-section log-card">
           <div class="section-header">
             <div class="section-title">
-              <span>📜</span>
               <h2>Nhật ký hoạt động hệ thống</h2>
             </div>
             <button id="btnClearLog" class="btn-mode" style="padding: 3px 10px; font-size: 0.75rem;">
@@ -147,8 +189,7 @@
         <section class="card-section">
           <div class="section-header">
             <div class="section-title">
-              <span>📊</span>
-              <h2>Thông số</h2>
+              <h2>Thông số vận hành</h2>
             </div>
           </div>
 
@@ -157,7 +198,6 @@
             <div class="stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Trạng thái (FSM)</span>
-                <span class="stat-card-icon">⚙️</span>
               </div>
               <div class="stat-main-value">
                 <span id="badgeSystemState" class="stat-badge badge-state-wait">WAIT_MATERIAL</span>
@@ -169,9 +209,8 @@
             <div class="stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Băng chuyền</span>
-                <span class="stat-card-icon">🔄</span>
               </div>
-              <div class="stat-main-value" id="valConveyorStatus" style="color: #15803d;">
+              <div class="stat-main-value" id="valConveyorStatus">
                 Đang chạy
               </div>
               <p class="stat-desc">Động cơ qua driver A4988 / L298N</p>
@@ -181,9 +220,8 @@
             <div class="stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Góc quay servo</span>
-                <span class="stat-card-icon">📐</span>
               </div>
-              <div class="stat-main-value" id="valServoAngle" style="color: #b45309;">
+              <div class="stat-main-value" id="valServoAngle">
                 90°
               </div>
               <p class="stat-desc">Góc: 90° | 30° | 70° | 110° | 150°</p>
@@ -193,15 +231,14 @@
             <div class="stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Nhận diện AI</span>
-                <span class="stat-card-icon">👁️</span>
               </div>
-              <div class="stat-main-value" id="valAiResult" style="color: #475569;">
+              <div class="stat-main-value" id="valAiResult">
                 Chờ vật thể
               </div>
-              <p id="valAiConfidence" class="stat-desc" style="color: var(--accent-cyan); font-weight: 700;">
+              <p id="valAiConfidence" class="stat-desc" style="font-weight: 700;">
                 Độ tin cậy: --
               </p>
-              <p id="valAiSize" class="stat-desc" style="color: #b45309; font-weight: 700; font-size: 0.78rem; margin-top: 2px;">
+              <p id="valAiSize" class="stat-desc" style="font-weight: 700; font-size: 0.78rem; margin-top: 2px;">
                 Kích thước: --
               </p>
             </div>
@@ -220,7 +257,14 @@
             <!-- Aluminum Bin -->
             <div class="bin-box aluminum">
               <div class="bin-header">
-                <span class="bin-name">🥫 Thùng nhôm</span>
+                <span class="bin-name">
+                  <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M7 5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/>
+                    <ellipse cx="12" cy="5" rx="3.5" ry="1.5"/>
+                    <line x1="7" y1="8" x2="17" y2="8"/>
+                  </svg>
+                  <span>Thùng nhôm</span>
+                </span>
                 <span class="bin-angle">Servo: 30°</span>
               </div>
               <div class="bin-percent" id="valAluminum">0%</div>
@@ -233,7 +277,13 @@
             <!-- Steel Bin -->
             <div class="bin-box steel">
               <div class="bin-header">
-                <span class="bin-name">🔩 Thùng sắt/thép</span>
+                <span class="bin-name">
+                  <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2.7l5.7 3.3a2 2 0 0 1 1 1.7v6.6a2 2 0 0 1-1 1.7L12 19.3l-5.7-3.3a2 2 0 0 1-1-1.7V7.7a2 2 0 0 1 1-1.7L12 2.7z"/>
+                    <circle cx="12" cy="11" r="3"/>
+                  </svg>
+                  <span>Thùng sắt/thép</span>
+                </span>
                 <span class="bin-angle">Servo: 70°</span>
               </div>
               <div class="bin-percent" id="valSteel">0%</div>
@@ -246,7 +296,17 @@
             <!-- Plastic Bin -->
             <div class="bin-box plastic">
               <div class="bin-header">
-                <span class="bin-name">🧴 Thùng nhựa</span>
+                <span class="bin-name">
+                  <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 2h4"/>
+                    <path d="M10 5h4"/>
+                    <path d="M10 2v3"/>
+                    <path d="M14 2v3"/>
+                    <path d="M9 8a3 3 0 0 1 3-3h0a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3h0a3 3 0 0 1-3-3Z"/>
+                    <line x1="9" y1="13" x2="15" y2="13"/>
+                  </svg>
+                  <span>Thùng nhựa</span>
+                </span>
                 <span class="bin-angle">Servo: 110°</span>
               </div>
               <div class="bin-percent" id="valPlastic">0%</div>
@@ -259,7 +319,16 @@
             <!-- Inspection Bin -->
             <div class="bin-box unknown">
               <div class="bin-header">
-                <span class="bin-name">❓ Thùng rác khác</span>
+                <span class="bin-name">
+                  <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" y1="11" x2="10" y2="17"/>
+                    <line x1="14" y1="11" x2="14" y2="17"/>
+                  </svg>
+                  <span>Thùng rác khác</span>
+                </span>
                 <span class="bin-angle">Servo: 150°</span>
               </div>
               <div class="bin-percent" id="valInspection">0%</div>
@@ -274,19 +343,158 @@
       </div>
     </div>
 
+    <!-- =====================================================
+         KHUNG THỐNG KÊ KHỐI LƯỢNG RÁC (đặt ở cuối trang)
+         ===================================================== -->
+    <section class="card-section stat-section" id="statSection">
+      <div class="section-header">
+        <div class="section-title">
+          <h2>Thống kê khối lượng rác tái chế</h2>
+        </div>
+        <div class="section-subtitle">Khối lượng quy đổi theo loại rác và kích cỡ AI (Nhỏ / Vừa / Lớn) &bull; <span id="statRangeLabel">Hôm nay</span> <span id="statDbEngineBadge" class="stat-engine-badge" title="Đang kết nối CSDL...">CSDL: Đang kiểm tra...</span></div>
+      </div>
+
+      <!-- Bộ lọc thời gian -->
+      <div class="stat-toolbar">
+        <div class="stat-filter-group">
+          <button id="statPresetToday" class="stat-btn active" type="button">Hôm nay</button>
+          <button id="statPresetWeek" class="stat-btn" type="button">Tuần này</button>
+          <button id="statPresetMonth" class="stat-btn" type="button">Tháng này</button>
+          <button id="statPresetAll" class="stat-btn" type="button">Tất cả</button>
+        </div>
+
+        <div class="stat-filter-group">
+          <label class="stat-date-label" for="statDateFrom">Từ ngày</label>
+          <input id="statDateFrom" class="stat-date" type="date" autocomplete="off">
+          <label class="stat-date-label" for="statDateTo">Đến ngày</label>
+          <input id="statDateTo" class="stat-date" type="date" autocomplete="off">
+          <button id="btnStatApply" class="stat-btn primary" type="button">Áp dụng lọc</button>
+        </div>
+
+        <div class="stat-filter-group stat-tools">
+          <button id="btnStatSeed" class="stat-btn" type="button" title="Tạo dữ liệu mô phỏng 30 ngày gần nhất để thử biểu đồ">Nạp mẫu 30 ngày</button>
+          <button id="btnStatExport" class="stat-btn" type="button" title="Tải chi tiết từng vật thể trong khoảng đang lọc (CSV)">Xuất CSV</button>
+          <button id="btnStatClear" class="stat-btn danger" type="button" title="Xóa toàn bộ lịch sử thống kê">Xóa lịch sử</button>
+        </div>
+      </div>
+
+      <div id="statMessage" class="stat-message" style="display: none;"></div>
+
+      <!-- 5 thẻ khối lượng -->
+      <div class="stat-cards">
+        <div class="stat-metric total">
+          <div class="stat-metric-title">Tổng khối lượng</div>
+          <div class="stat-metric-value" id="statTotalKg">0.000 kg</div>
+          <div class="stat-metric-meta" id="statTotalMeta">0 vật thể · 0 g</div>
+        </div>
+        <div class="stat-metric aluminum">
+          <div class="stat-metric-title">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/>
+              <ellipse cx="12" cy="5" rx="3.5" ry="1.5"/>
+              <line x1="7" y1="8" x2="17" y2="8"/>
+            </svg>
+            <span>Nhôm</span>
+          </div>
+          <div class="stat-metric-value" id="statAluKg">0.000 kg</div>
+          <div class="stat-metric-meta" id="statAluMeta">0 vật · 0 g · 0.0%</div>
+        </div>
+        <div class="stat-metric steel">
+          <div class="stat-metric-title">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2.7l5.7 3.3a2 2 0 0 1 1 1.7v6.6a2 2 0 0 1-1 1.7L12 19.3l-5.7-3.3a2 2 0 0 1-1-1.7V7.7a2 2 0 0 1 1-1.7L12 2.7z"/>
+              <circle cx="12" cy="11" r="3"/>
+            </svg>
+            <span>Sắt/thép</span>
+          </div>
+          <div class="stat-metric-value" id="statSteelKg">0.000 kg</div>
+          <div class="stat-metric-meta" id="statSteelMeta">0 vật · 0 g · 0.0%</div>
+        </div>
+        <div class="stat-metric plastic">
+          <div class="stat-metric-title">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 2h4"/>
+              <path d="M10 5h4"/>
+              <path d="M10 2v3"/>
+              <path d="M14 2v3"/>
+              <path d="M9 8a3 3 0 0 1 3-3h0a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3h0a3 3 0 0 1-3-3Z"/>
+              <line x1="9" y1="13" x2="15" y2="13"/>
+            </svg>
+            <span>Nhựa</span>
+          </div>
+          <div class="stat-metric-value" id="statPlasticKg">0.000 kg</div>
+          <div class="stat-metric-meta" id="statPlasticMeta">0 vật · 0 g · 0.0%</div>
+        </div>
+        <div class="stat-metric unknown">
+          <div class="stat-metric-title">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+            <span>Rác khác</span>
+          </div>
+          <div class="stat-metric-value" id="statUnknownKg">0.000 kg</div>
+          <div class="stat-metric-meta" id="statUnknownMeta">0 vật · 0 g · 0.0%</div>
+        </div>
+      </div>
+
+      <div id="statEmptyHint" class="stat-empty-hint" style="display: none;">
+        Chưa có dữ liệu trong khoảng thời gian này. Hãy gửi rác lên băng chuyền (số liệu tự cập nhật khi rác rơi vào thùng) hoặc bấm <b>Nạp mẫu 30 ngày</b> để xem thử biểu đồ.
+      </div>
+
+      <!-- 2 biểu đồ -->
+      <div class="stat-charts">
+        <div class="stat-chart-card">
+          <div class="stat-chart-title" id="statBarTitle">So sánh &amp; Xếp hạng khối lượng các loại rác (kg)</div>
+          <div class="stat-chart-box"><canvas id="statBarCanvas"></canvas></div>
+        </div>
+        <div class="stat-chart-card">
+          <div class="stat-chart-title">Cơ cấu khối lượng theo loại rác</div>
+          <div class="stat-chart-box"><canvas id="statDonutCanvas"></canvas></div>
+        </div>
+      </div>
+
+      <div class="stat-footnotes">
+        <span id="statCycleSummary">Chu kỳ đổ thùng: 0 lần · thu gom ước tính 0.000 kg</span>
+        <span id="statEventSummary">Sự kiện an toàn: Dừng khẩn cấp 0 · Sinh vật sống 0 · Thùng đầy 0</span>
+      </div>
+    </section>
+
   </main>
 
   <!-- =====================================================
-       FOOTER
+       FOOTER (Centered, Modern Academic & Professional)
        ===================================================== -->
   <footer class="footer">
-    <p>Học phần: Đồ án Internet of Things (IoT) &bull; Đề tài 59: Hệ thống phân loại rác tái chế thông minh &bull; Nhóm 13</p>
-    <p style="margin-top: 4px; color: var(--text-dim);">Thành viên: Võ Đăng Khoa &bull; Đỗ Quang Liêm &bull; Phạm Anh Nhật Minh</p>
+    <div class="footer-container">
+      <div class="footer-meta">
+        <span class="footer-badge">Đồ án IoT</span>
+        <span class="footer-topic">Đề tài 59: Hệ thống phân loại rác tái chế thông minh</span>
+        <span class="footer-badge group">Nhóm 13</span>
+      </div>
+      <div class="footer-team">
+        <span class="team-label">Thành viên thực hiện:</span>
+        <div class="team-chips">
+          <span class="team-chip">Võ Đăng Khoa</span>
+          <span class="team-chip">Đỗ Quang Liêm</span>
+          <span class="team-chip">Phạm Anh Nhật Minh</span>
+        </div>
+      </div>
+      <div class="footer-subtext">
+        Học phần: Internet of Things (IoT) &bull; Trường Đại học Công nghệ Thông tin
+      </div>
+    </div>
   </footer>
 
   <!-- Application Logic Scripts -->
-  <script src="js/animation.js"></script>
-  <script src="js/mqtt-client.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/chart.umd.min.js?v=20261110_v8"></script>
+  <script src="js/waste-db.js?v=20261110_v8"></script>
+  <script src="js/waste-statistics.js?v=20261110_v8"></script>
+  <script src="js/animation.js?v=20261110_v8"></script>
+  <script src="js/mqtt-client.js?v=20261110_v8"></script>
+  <script src="js/app.js?v=20261110_v8"></script>
 </body>
 </html>

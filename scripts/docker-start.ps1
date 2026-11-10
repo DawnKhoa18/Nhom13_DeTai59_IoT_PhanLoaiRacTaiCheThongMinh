@@ -3,7 +3,7 @@ Write-Host "=====================================================" -ForegroundCo
 Write-Host " [DOCKER] KHOI CHAY SMART RECYCLING IOT STACK" -ForegroundColor Yellow
 Write-Host "=====================================================" -ForegroundColor Cyan
 
-docker compose up -d web-dashboard mqtt-broker
+docker compose up -d web-dashboard mqtt-broker backend-server
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
@@ -11,6 +11,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "1. Web Dashboard  : http://localhost:8088" -ForegroundColor White
     Write-Host "2. MQTT Broker TCP: localhost:1883" -ForegroundColor White
     Write-Host "3. MQTT WebSocket : localhost:9001" -ForegroundColor White
+    Write-Host "4. Backend Server : http://localhost:3000 (Database SQLite)" -ForegroundColor White
+    Write-Host "5. REST API Proxy : http://localhost:8088/api/" -ForegroundColor White
     Write-Host ""
     Write-Host "Mo trinh duyet truy cap: http://localhost:8088" -ForegroundColor Cyan
     Start-Process "http://localhost:8088"

@@ -15,6 +15,7 @@ services:
     restart: unless-stopped
     depends_on:
       - mqtt-broker
+      - backend-server
 
   # =====================================================
   # 2. LOCAL MQTT BROKER (Eclipse Mosquitto)
@@ -31,7 +32,28 @@ services:
     restart: unless-stopped
 
   # =====================================================
-  # 3. FIRMWARE BUILDER (PlatformIO Core)
+  # 3. BACKEND SERVER & DATABASE (Node.js + SQLite)
+  # REST API: :3000 | 24/7 MQTT Ingestor
+  # =====================================================
+  backend-server:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: smart_recycling_backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - mqtt-broker
+    environment:
+      - PORT=3000
+      - DB_PATH=/app/data/smart_recycling.db
+      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+
+  # =====================================================
+  # 4. FIRMWARE BUILDER (PlatformIO Core)
   # Run: docker compose run --rm firmware-builder
   # =====================================================
   firmware-builder:

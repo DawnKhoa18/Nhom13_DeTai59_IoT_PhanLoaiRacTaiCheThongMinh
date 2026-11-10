@@ -131,6 +131,7 @@ String blockedMaterial = "";
 // Forward declarations
 void activateEmergency();
 void resetEmergency();
+void emptyAllBins();
 void emptyBlockedBin();
 void startSorting(const char *material, int angle, const char *binName, int increment = 10, const char *sizeName = "M");
 void increaseBinLevel(String material, int increment = 10);
@@ -237,30 +238,28 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       resetEmergency();
     }
   } else if (upper.indexOf("EMPTY_BIN") >= 0 || upper.indexOf("EMPTY") >= 0) {
-    if (state == BIN_FULL_STOP || isBinFull("ALUMINUM") || isBinFull("STEEL") || isBinFull("PLASTIC") || isBinFull("UNKNOWN")) {
-      emptyBlockedBin();
-    }
+    emptyAllBins();
   } else if (upper.indexOf("DETECT") >= 0) {
     if (state == WAIT_MATERIAL) {
       stopConveyor();
       state = WAIT_AI;
       publishTelemetry("Material detected via Web!");
     }
-  } else if (upper.indexOf("ALUMINUM") >= 0) {
-    if (state == WAIT_AI || state == WAIT_MATERIAL) {
-      startSorting("ALUMINUM", SERVO_ALUMINUM, "ALUMINUM BIN", increment, sizeStr.c_str());
+  } else if (upper.indexOf("ALUMINUM") >= 0 || upper.indexOf("STEEL") >= 0 || upper.indexOf("PLASTIC") >= 0 || upper.indexOf("UNKNOWN") >= 0) {
+    if (state == SORTING && currentMaterial != "") {
+      increaseBinLevel(currentMaterial, currentIncrement);
+      state = WAIT_MATERIAL;
     }
-  } else if (upper.indexOf("STEEL") >= 0) {
     if (state == WAIT_AI || state == WAIT_MATERIAL) {
-      startSorting("STEEL", SERVO_STEEL, "STEEL BIN", increment, sizeStr.c_str());
-    }
-  } else if (upper.indexOf("PLASTIC") >= 0) {
-    if (state == WAIT_AI || state == WAIT_MATERIAL) {
-      startSorting("PLASTIC", SERVO_PLASTIC, "PLASTIC BIN", increment, sizeStr.c_str());
-    }
-  } else if (upper.indexOf("UNKNOWN") >= 0) {
-    if (state == WAIT_AI || state == WAIT_MATERIAL) {
-      startSorting("UNKNOWN", SERVO_UNKNOWN, "INSPECTION AREA", increment, sizeStr.c_str());
+      if (upper.indexOf("ALUMINUM") >= 0) {
+        startSorting("ALUMINUM", SERVO_ALUMINUM, "ALUMINUM BIN", increment, sizeStr.c_str());
+      } else if (upper.indexOf("STEEL") >= 0) {
+        startSorting("STEEL", SERVO_STEEL, "STEEL BIN", increment, sizeStr.c_str());
+      } else if (upper.indexOf("PLASTIC") >= 0) {
+        startSorting("PLASTIC", SERVO_PLASTIC, "PLASTIC BIN", increment, sizeStr.c_str());
+      } else if (upper.indexOf("UNKNOWN") >= 0) {
+        startSorting("UNKNOWN", SERVO_UNKNOWN, "INSPECTION AREA", increment, sizeStr.c_str());
+      }
     }
   }
 }
@@ -639,122 +638,43 @@ void blockSortingBecauseFull(
 // =====================================================
 // EMPTY BIN
 // =====================================================
-void emptyBlockedBin() {
-
+void emptyAllBins() {
   Serial.println();
-  Serial.println(
-    "=============================="
-  );
+  Serial.println("==============================");
+  Serial.println("OPERATOR EMPTY ALL BINS");
+  Serial.println("==============================");
 
-  Serial.println(
-    "OPERATOR EMPTY BIN"
-  );
+  aluminumLevel = 0;
+  steelLevel = 0;
+  plasticLevel = 0;
+  inspectionLevel = 0;
 
-  // ---------------------------------
-  // ALUMINUM
-  // ---------------------------------
-  if (
-    blockedMaterial
-    == "ALUMINUM"
-  ) {
-
-    aluminumLevel = 0;
-
-    Serial.println(
-      "ALUMINUM BIN emptied."
-    );
-  }
-
-  // ---------------------------------
-  // STEEL
-  // ---------------------------------
-  else if (
-    blockedMaterial
-    == "STEEL"
-  ) {
-
-    steelLevel = 0;
-
-    Serial.println(
-      "STEEL BIN emptied."
-    );
-  }
-
-  // ---------------------------------
-  // PLASTIC
-  // ---------------------------------
-  else if (
-    blockedMaterial
-    == "PLASTIC"
-  ) {
-
-    plasticLevel = 0;
-
-    Serial.println(
-      "PLASTIC BIN emptied."
-    );
-  }
-
-  // ---------------------------------
-  // INSPECTION
-  // ---------------------------------
-  else if (
-    blockedMaterial
-    == "UNKNOWN"
-  ) {
-
-    inspectionLevel = 0;
-
-    Serial.println(
-      "INSPECTION AREA emptied."
-    );
-  }
-
-  Serial.println(
-    "Bin level: 0%"
-  );
+  Serial.println("All bin levels reset to 0%.");
 
   blockedMaterial = "";
-
   currentMaterial = "";
   currentBin = "";
   currentSize = "M";
   currentIncrement = 10;
 
-  // Servo về Home
-  sortingServo.write(
-    SERVO_HOME
-  );
+  sortingServo.write(SERVO_HOME);
   currentServoAngle = SERVO_HOME;
 
-  // Tắt cảnh báo
   setNormalStatus();
-
-  // Reset hệ thống
   state = WAIT_MATERIAL;
-
   detectLocked = false;
   aiLocked = false;
 
-  Serial.println(
-    "Warning cleared."
-  );
-
-  Serial.println(
-    "System ready."
-  );
-
+  Serial.println("Warning cleared. System ready.");
   startConveyor();
+  Serial.println("Waiting for material...");
+  Serial.println("==============================");
 
-  Serial.println(
-    "Waiting for material..."
-  );
+  publishTelemetry("All bins emptied. System ready.");
+}
 
-  Serial.println(
-    "=============================="
-  );
-
-  publishTelemetry("Bin emptied. System ready.");
+void emptyBlockedBin() {
+  emptyAllBins();
 }
 
 // =====================================================
@@ -1218,7 +1138,7 @@ void loop() {
 
       emptyBinLocked = true;
 
-      emptyBlockedBin();
+    emptyAllBins();
     }
 
     delay(10);

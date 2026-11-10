@@ -6,3 +6,5 @@
 /docs
 /scripts
 /extracted_images
+data/*.db*
+server/node_modules/

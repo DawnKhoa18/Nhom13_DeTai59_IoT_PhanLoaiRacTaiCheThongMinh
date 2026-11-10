@@ -28,6 +28,8 @@ class ConveyorAnimation {
     this.isScanning = false;
     this.scanScanlineY = 0;
     this.scanDirection = 1;
+    this.isServerSorting = false;
+    this.isStationBlocked = false;
 
     // Multi-item Queue
     this.items = [];
@@ -40,10 +42,10 @@ class ConveyorAnimation {
 
     // Chute target positions
     this.chutes = [
-      { id: 'ALUMINUM', name: 'Nhôm (30°)', angle: 30, color: '#15803d', targetYRatio: 0.16 },
-      { id: 'STEEL',    name: 'Sắt/thép (70°)', angle: 70, color: '#0369a1', targetYRatio: 0.37 },
-      { id: 'PLASTIC',  name: 'Nhựa (110°)', angle: 110, color: '#c2410c', targetYRatio: 0.58 },
-      { id: 'UNKNOWN',  name: 'Rác khác (150°)', angle: 150, color: '#b91c1c', targetYRatio: 0.79 }
+      { id: 'ALUMINUM', name: 'Nhôm (30°)', angle: 30, color: '#0f766e', targetYRatio: 0.16 },
+      { id: 'STEEL',    name: 'Sắt/thép (70°)', angle: 70, color: '#1d4ed8', targetYRatio: 0.37 },
+      { id: 'PLASTIC',  name: 'Nhựa (110°)', angle: 110, color: '#d97706', targetYRatio: 0.58 },
+      { id: 'UNKNOWN',  name: 'Rác khác (150°)', angle: 150, color: '#475569', targetYRatio: 0.79 }
     ];
 
     // Start loop
@@ -73,41 +75,69 @@ class ConveyorAnimation {
     this.isScanning = scanning;
   }
 
+  setServerSorting(busy) {
+    this.isServerSorting = !!busy;
+  }
+
   removeLivingItems() {
     const hadLiving = this.items.some(item => item.type === 'LIVING');
     this.items = this.items.filter(item => item.type !== 'LIVING');
     return hadLiving;
   }
 
+  clearAllItems() {
+    this.items = [];
+    this.isScanning = false;
+    this.isServerSorting = false;
+    this.isStationBlocked = false;
+    this.servoAngle = 90;
+  }
+
+  rewindUnroutedScannedItems() {
+    const gateStopX = this.width * this.aiScannerX - 34 * this.scale;
+    this.items.forEach(item => {
+      if (item.scanned && !item.deflected && item.type !== 'LIVING') {
+        item.scanned = false;
+        if (item.x > gateStopX) {
+          item.x = gateStopX;
+        }
+      }
+    });
+  }
+
+  hasActiveSortingItems() {
+    return this.items.some(item => item.scanned && !item.completed && item.type !== 'LIVING');
+  }
+
   spawnItem(materialType, onComplete, chosenSize) {
     let color = '#475569';
-    let icon = '📦';
+    let code = 'MISC';
     let label = 'Unknown';
     let angle = 90;
 
     if (materialType === 'ALUMINUM') {
-      color = '#15803d';
-      icon = '🥫';
+      color = '#0f766e';
+      code = 'ALU';
       label = 'Nhôm';
       angle = 30;
     } else if (materialType === 'STEEL') {
-      color = '#0369a1';
-      icon = '🔩';
+      color = '#1d4ed8';
+      code = 'FE';
       label = 'Sắt/thép';
       angle = 70;
     } else if (materialType === 'PLASTIC') {
-      color = '#c2410c';
-      icon = '🧴';
+      color = '#d97706';
+      code = 'PET';
       label = 'Nhựa';
       angle = 110;
     } else if (materialType === 'UNKNOWN') {
-      color = '#b91c1c';
-      icon = '❓';
+      color = '#475569';
+      code = 'MISC';
       label = 'Rác khác';
       angle = 150;
     } else if (materialType === 'LIVING') {
-      color = '#db2777';
-      icon = '🐭';
+      color = '#dc2626';
+      code = 'BIO';
       label = 'Sinh vật sống';
       angle = 90;
     }
@@ -170,7 +200,8 @@ class ConveyorAnimation {
       increment: increment,
       radius: radius,
       label: fullLabel,
-      icon: icon,
+      code: code,
+      icon: code,
       color: color,
       angle: angle,
       x: startX,
@@ -188,30 +219,36 @@ class ConveyorAnimation {
   }
 
   animate(currentTime) {
+    requestAnimationFrame(this.animate);
+
     const dt = (currentTime - this.lastTime) / 1000;
     this.lastTime = currentTime;
+    const validDt = (dt > 0 && dt < 0.25) ? dt : (1 / 60);
+    this.dtFactor = Math.min(2.5, Math.max(0.25, validDt * 60));
 
-    // Smooth servo angle transition
-    this.currentAngle += (this.servoAngle - this.currentAngle) * 0.12;
+    try {
+      // Smooth servo angle transition
+      this.currentAngle += (this.servoAngle - this.currentAngle) * 0.12 * this.dtFactor;
 
-    // Update conveyor texture offset
-    if (this.isConveyorRunning) {
-      this.beltOffset = (this.beltOffset + this.beltSpeed * this.scale) % (30 * this.scale);
+      // Update conveyor texture offset
+      if (this.isConveyorRunning && !this.isStationBlocked) {
+        this.beltOffset = (this.beltOffset + this.beltSpeed * this.scale * this.dtFactor) % (30 * this.scale);
+      }
+
+      // Clear canvas
+      this.ctx.clearRect(0, 0, this.width, this.height);
+
+      // Render components
+      this.drawBackground();
+      this.drawConveyorBelt();
+      this.drawChutesAndBins();
+      this.drawIRSensor();
+      this.drawAIScanner();
+      this.drawServoMechanism();
+      this.updateAndDrawItems();
+    } catch (err) {
+      console.error('[ConveyorAnimation] Render error:', err);
     }
-
-    // Clear canvas
-    this.ctx.clearRect(0, 0, this.width, this.height);
-
-    // Render components
-    this.drawBackground();
-    this.drawConveyorBelt();
-    this.drawChutesAndBins();
-    this.drawIRSensor();
-    this.drawAIScanner();
-    this.drawServoMechanism();
-    this.updateAndDrawItems();
-
-    requestAnimationFrame(this.animate);
   }
 
   drawBackground() {
@@ -271,7 +308,6 @@ class ConveyorAnimation {
     if (this.isConveyorRunning) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.font = `bold ${12 * this.scale}px sans-serif`;
-      ctx.fillText('► ► ►  Băng chuyền đang chạy', 60 * this.scale, beltY + beltHeight / 2 + 4 * this.scale);
     }
   }
 
@@ -459,45 +495,47 @@ class ConveyorAnimation {
     });
   }
 
-  drawSingleItem(ctx, item) {
+  drawSingleItem(ctx, item, isWaitingAtGate = false) {
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, item.opacity));
     ctx.translate(item.x, item.y);
 
     const r = (item.radius || 14) * this.scale;
-    const fontIconSize = (item.radius ? item.radius : 14) * this.scale;
 
-    // Glow background
+    // Clean Flat Body without glow blur
     ctx.fillStyle = item.color;
-    ctx.shadowColor = item.color;
-    ctx.shadowBlur = 6 * this.scale;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
 
-    // Crisp white border around item circle
+    // Crisp white border
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2 * this.scale;
+    ctx.lineWidth = 1.8 * this.scale;
     ctx.stroke();
 
-    // Icon emoji
-    ctx.font = `${fontIconSize}px sans-serif`;
+    // Technical Code Monogram (ALU, FE, PET, MISC, BIO)
+    const codeText = item.code || item.type || '';
+    const fontSize = Math.max(8 * this.scale, r * 0.72);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${fontSize}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(item.icon, 0, 1 * this.scale);
+    ctx.fillText(codeText, 0, 0.5 * this.scale);
 
-    // Floating text label with high-contrast badge background
-    ctx.font = `bold ${9.5 * this.scale}px sans-serif`;
-    const labelText = item.label;
+    // Floating text label with minimalist badge
+    ctx.font = `600 ${9 * this.scale}px sans-serif`;
+    let labelText = item.label;
+    if (isWaitingAtGate) {
+      labelText = `${item.label} (Chờ AI...)`;
+    }
     const textWidth = ctx.measureText(labelText).width;
-    const padX = 6 * this.scale;
-    const pillH = 14 * this.scale;
-    const pillY = -(r + 14 * this.scale);
+    const padX = 5 * this.scale;
+    const pillH = 13 * this.scale;
+    const pillY = -(r + 13 * this.scale);
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.fillStyle = isWaitingAtGate ? 'rgba(180, 83, 9, 0.95)' : 'rgba(15, 23, 42, 0.85)';
     ctx.beginPath();
-    ctx.roundRect(-textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH, 4 * this.scale);
+    ctx.roundRect(-textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH, 3 * this.scale);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
@@ -512,29 +550,61 @@ class ConveyorAnimation {
     if (this.items.length === 0) {
       this.isScanning = false;
       this.servoAngle = 90;
+      this.isStationBlocked = false;
       return;
     }
 
     const ctx = this.ctx;
     const scannerX = this.width * this.aiScannerX;
     const servoX = this.width * this.servoStationX;
+    const gateStopX = scannerX - 34 * this.scale;
+    const minGap = 68 * this.scale;
+
+    let hasScannedItemBeforeServo = this.items.some(
+      it => it.scanned && !it.deflected && it.type !== 'LIVING'
+    );
+    const leadingUnscanned = this.items.find(it => !it.deflected && !it.scanned);
 
     let anyScanning = false;
     let targetServoAngle = 90;
     let closestToServoDist = Infinity;
+    let prevBeltItemX = Infinity;
+    let anyUnscannedMoved = false;
+
+    const stepFactor = this.dtFactor || 1;
 
     this.items = this.items.filter(item => {
       if (this.isConveyorRunning) {
         if (!item.deflected) {
-          // Move forward along the belt
-          item.x += this.beltSpeed * this.scale;
+          const isGateClosedNow = this.isServerSorting || hasScannedItemBeforeServo;
+          let nextX = item.x + this.beltSpeed * this.scale * stepFactor;
 
-          // Check if passing camera scanner
+          // Station Gating: hold un-scanned items right before AI Scanner while busy
+          if (!item.scanned && isGateClosedNow && nextX > gateStopX) {
+            nextX = Math.max(item.x, gateStopX);
+          }
+
+          // Queue Spacing: keep neat spacing behind any item ahead on the belt
+          if (nextX > prevBeltItemX - minGap) {
+            nextX = Math.max(item.x, prevBeltItemX - minGap);
+          }
+
+          if (!item.scanned && nextX > item.x + 0.01) {
+            anyUnscannedMoved = true;
+          }
+
+          item.x = nextX;
+          prevBeltItemX = item.x;
+
+          // Check if passing camera scanner (only trigger scan when gate is open)
           if (Math.abs(item.x - scannerX) < 32 * this.scale) {
             anyScanning = true;
-            if (!item.scanned) {
+            if (!item.scanned && !(this.isServerSorting || hasScannedItemBeforeServo)) {
               item.scanned = true;
-              if (this.onItemScanned) this.onItemScanned(item.type, item.size, item.increment, item.sizeLabel);
+              if (item.type !== 'LIVING') {
+                hasScannedItemBeforeServo = true;
+              }
+              if (this.onItemScanned) this.onItemScanned(item.type, item.size, item.increment, item.sizeLabel, item);
             }
           }
 
@@ -562,19 +632,19 @@ class ConveyorAnimation {
           }
         } else {
           // Slide smoothly along chute rail
-          item.x += (this.beltSpeed * 1.35) * this.scale;
-          item.y += (item.targetY - item.y) * 0.08;
+          item.x += (this.beltSpeed * 1.35) * this.scale * stepFactor;
+          item.y += (item.targetY - item.y) * Math.min(0.5, 0.08 * stepFactor);
 
           // Fade out near end of chute
           if (item.x > this.width - 35 * this.scale) {
-            item.opacity -= 0.04;
+            item.opacity -= 0.04 * stepFactor;
             if (item.opacity <= 0) {
               if (!item.completed) {
                 item.completed = true;
                 if (typeof item.onComplete === 'function') {
-                  item.onComplete(item.type, item.size, item.increment);
+                  item.onComplete(item.type, item.size, item.increment, item);
                 }
-                if (this.onItemSorted) this.onItemSorted(item.type, item.size, item.increment, item.sizeLabel);
+                if (this.onItemSorted) this.onItemSorted(item.type, item.size, item.increment, item.sizeLabel, item);
               }
               return false; // remove from items array
             }
@@ -584,12 +654,23 @@ class ConveyorAnimation {
 
       // Draw item
       if (item.x > -30 * this.scale) {
-        this.drawSingleItem(ctx, item);
+        const isWaitingAtGate =
+          item === leadingUnscanned &&
+          (this.isServerSorting || hasScannedItemBeforeServo) &&
+          item.x >= gateStopX - 1;
+        this.drawSingleItem(ctx, item, isWaitingAtGate);
       }
 
       return true;
     });
 
+    this.isStationBlocked = !!(
+      leadingUnscanned &&
+      this.isServerSorting &&
+      !hasScannedItemBeforeServo &&
+      leadingUnscanned.x >= gateStopX - 0.5 &&
+      !anyUnscannedMoved
+    );
     this.isScanning = anyScanning;
     this.servoAngle = targetServoAngle;
   }
