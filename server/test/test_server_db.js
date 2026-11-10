@@ -65,9 +65,9 @@ async function runTests() {
 
   // Kiểm tra CSV export
   const csv = db.exportCsv();
-  assert(csv.startsWith('\uFEFFid,timestamp'), 'CSV phải có BOM UTF-8 và tiêu đề');
-  assert(csv.includes('ALUMINUM'), 'CSV phải chứa dữ liệu ALUMINUM');
-  console.log('  ✓ exportCsv() tạo nội dung CSV chuẩn UTF-8');
+  assert(csv.startsWith('\uFEFFSTT,Mã bản ghi'), 'CSV phải có BOM UTF-8 và tiêu đề tiếng Việt');
+  assert(csv.includes('Nhôm'), 'CSV phải chứa dữ liệu Nhôm');
+  console.log('  ✓ exportCsv() tạo nội dung CSV chuẩn UTF-8 tiếng Việt');
 
   // Nạp mẫu 5 ngày
   const sampleCount = db.seedSampleData(5);
@@ -129,8 +129,16 @@ async function runTests() {
   // Test /api/export-csv
   const csvRes = await fetch(`${baseUrl}/export-csv`);
   const csvText = await csvRes.text();
-  assert(csvText.includes('STEEL'), 'File CSV qua API phải có STEEL');
-  console.log('  ✓ GET /api/export-csv -> trả về file CSV hợp lệ');
+  assert(csvText.includes('Sắt/thép'), 'File CSV qua API phải có Sắt/thép');
+  console.log('  ✓ GET /api/export-csv -> trả về file CSV tiếng Việt hợp lệ');
+
+  // Test /api/export-excel
+  const excelRes = await fetch(`${baseUrl}/export-excel`);
+  assert.strictEqual(excelRes.status, 200);
+  assert(excelRes.headers.get('content-type').includes('spreadsheetml'));
+  const excelBuf = await excelRes.arrayBuffer();
+  assert(excelBuf.byteLength > 2000, 'File Excel .xlsx phải có dữ liệu hợp lệ');
+  console.log('  ✓ GET /api/export-excel -> tải file .xlsx 2 sheet định dạng chuyên nghiệp thành công');
 
   // Dọn dẹp
   server.close();

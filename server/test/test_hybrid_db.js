@@ -61,10 +61,15 @@ async function testHybridFlow() {
   assert(ev && ev.eventType === 'E_STOP');
   console.log('  ✓ wasteDb.recordSystemEvent() ghi nhận sự kiện an toàn thành công');
 
-  // Kiểm tra export CSV
+  // Kiểm tra export CSV & Excel
   const csv = await wasteDb.exportCsv();
-  assert(csv.includes('ALUMINUM'));
-  console.log('  ✓ wasteDb.exportCsv() tải CSV từ server thành công');
+  assert(csv.includes('Nhôm'));
+  console.log('  ✓ wasteDb.exportCsv() tải CSV tiếng Việt từ server thành công');
+
+  const excelExport = await wasteDb.exportExcel();
+  assert(excelExport.filename.includes('Báo cáo khối lượng rác'));
+  assert(excelExport.filename.endsWith('.xlsx'));
+  console.log(`  ✓ wasteDb.exportExcel() tạo file: "${excelExport.filename}"`);
 
   // 3. Kiểm thử MQTT Ingestor mô phỏng gói tin từ ESP32
   const ingestor = new MqttIngestor(db, { brokerUrl: 'mqtt://fake:1883' });

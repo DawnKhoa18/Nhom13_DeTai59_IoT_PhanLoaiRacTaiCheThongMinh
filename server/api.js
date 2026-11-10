@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { buildWasteExcelWorkbook, formatExportFilename } = require('./excel-export');
 
 function createApiRouter(db) {
   const router = express.Router();
@@ -153,16 +154,36 @@ function createApiRouter(db) {
     }
   });
 
-  // 10. Xuất file CSV
+  // 10. Xuất file Excel (.xlsx) 2 sheet định dạng chuyên nghiệp
+  router.get('/export-excel', async (req, res) => {
+    try {
+      const fromStr = req.query.from || '';
+      const toStr = req.query.to || '';
+      const { workbook, filename } = await buildWasteExcelWorkbook(db, fromStr, toStr);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const encodedFilename = encodeURIComponent(filename);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', buffer.length);
+      res.send(buffer);
+    } catch (e) {
+      res.status(500).json({ status: 'error', message: e.message });
+    }
+  });
+
+  // 11. Xuất file CSV (dự phòng)
   router.get('/export-csv', (req, res) => {
     try {
       const fromStr = req.query.from || '';
       const toStr = req.query.to || '';
       const csv = db.exportCsv(fromStr, toStr);
-      const filename = `thong-ke-rac_${fromStr || 'tat-ca'}_${toStr || 'tat-ca'}.csv`;
+      const filename = formatExportFilename(fromStr, toStr, 'csv');
+      const encodedFilename = encodeURIComponent(filename);
 
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
       res.send(csv);
     } catch (e) {
       res.status(500).json({ status: 'error', message: e.message });

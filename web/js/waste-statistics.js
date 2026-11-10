@@ -240,7 +240,7 @@
       Object.keys(PRESET_BUTTONS).forEach((p) => on(PRESET_BUTTONS[p], () => this.setPreset(p)));
       on('btnStatApply', () => this.applyCustom());
       on('btnStatSeed', () => this.seedSample());
-      on('btnStatExport', () => this.downloadCsv());
+      on('btnStatExport', () => this.downloadExcel());
       on('btnStatClear', () => this.clearHistory());
 
       if (this.db) {
@@ -603,27 +603,40 @@
       }).catch((e) => this._message('Không xóa được dữ liệu: ' + e.message, true));
     }
 
-    downloadCsv() {
+    downloadExcel() {
       const range = this._currentRange();
       if (range.error) {
         this._message(range.error, true);
         return Promise.resolve();
       }
-      return this.db.exportCsv(range.from, range.to).then((csv) => {
-        if (csv.split('\r\n').length <= 1) {
+
+      this._message('Đang chuẩn bị file báo cáo Excel...', false);
+
+      return this.db.exportExcel(range.from, range.to).then((res) => {
+        if (!res || !res.blob || res.blob.size <= 0) {
           this._message('Không có dữ liệu trong khoảng đã chọn để xuất.', true);
           return;
         }
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+
+        const blob = res.blob;
+        const filename = res.filename || 'Báo cáo khối lượng rác.xlsx';
+
         const url = URL.createObjectURL(blob);
         const a = this.doc.createElement('a');
         a.href = url;
-        a.download = `thong-ke-rac_${range.from || 'tat-ca'}_${range.to || 'tat-ca'}.csv`;
+        a.download = filename;
         this.doc.body.appendChild(a);
         a.click();
         this.doc.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }).catch((e) => this._message('Không xuất được CSV: ' + e.message, true));
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+        this._message(`Đã xuất file thành công: "${filename}"`, false);
+        setTimeout(() => this._message('', false), 4000);
+      }).catch((e) => this._message('Không xuất được file Excel: ' + (e && e.message ? e.message : e), true));
+    }
+
+    downloadCsv() {
+      return this.downloadExcel();
     }
   }
 

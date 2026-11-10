@@ -4,3 +4,5 @@
 .pio
 docs
 *.md
+server/node_modules
+data/*.db*

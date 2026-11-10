@@ -102,18 +102,63 @@
     return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
 
+  function formatDateVn(dateStr) {
+    if (!dateStr) return '';
+    const parts = String(dateStr).split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+  }
+
+  function formatDateForFilename(dateStr) {
+    if (!dateStr) return '';
+    const parts = String(dateStr).split('-');
+    return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : dateStr;
+  }
+
+  function formatExportFilename(fromStr, toStr, ext = 'xlsx') {
+    if (fromStr && toStr && fromStr === toStr) {
+      return `Báo cáo khối lượng rác - Ngày ${formatDateForFilename(fromStr)}.${ext}`;
+    }
+    if (fromStr && toStr) {
+      return `Báo cáo khối lượng rác - Từ ${formatDateForFilename(fromStr)} Đến ${formatDateForFilename(toStr)}.${ext}`;
+    }
+    if (fromStr) {
+      return `Báo cáo khối lượng rác - Từ Ngày ${formatDateForFilename(fromStr)}.${ext}`;
+    }
+    if (toStr) {
+      return `Báo cáo khối lượng rác - Đến Ngày ${formatDateForFilename(toStr)}.${ext}`;
+    }
+    return `Báo cáo khối lượng rác - Toàn Bộ Lịch Sử.${ext}`;
+  }
+
   function recordsToCsv(records) {
+    const matNames = { ALUMINUM: 'Nhôm', STEEL: 'Sắt/thép', PLASTIC: 'Nhựa', UNKNOWN: 'Rác khác' };
+    const sizeNames = { S: 'Nhỏ (S)', M: 'Vừa (M)', L: 'Lớn (L)' };
+    const binNames = { aluminum: 'Thùng nhôm', steel: 'Thùng sắt/thép', plastic: 'Thùng nhựa', inspection: 'Thùng rác khác' };
+
     const header = [
-      'id', 'timestamp', 'date', 'time', 'material', 'size',
-      'weight_g', 'weight_kg', 'volume_increment_percent',
-      'bin', 'servo_angle', 'confidence', 'source'
+      'STT', 'Mã bản ghi', 'Ngày phân loại', 'Thời gian',
+      'Loại rác', 'Kích cỡ AI', 'Khối lượng (g)', 'Khối lượng (kg)',
+      'Mức tăng thùng (%)', 'Thùng chứa', 'Góc Servo (°)', 'Độ tin cậy AI (%)', 'Nguồn dữ liệu'
     ];
     const lines = [header.join(',')];
-    records.forEach((r) => {
+    records.forEach((r, idx) => {
+      const dateVn = formatDateVn(r.dateStr);
+      const sourceVn = r.source === 'SAMPLE' ? 'Dữ liệu mô phỏng (SAMPLE)' : 'Băng chuyền thực tế (LIVE)';
+
       lines.push([
-        r.id, r.timestamp, r.dateStr, r.timeStr, r.material, r.size,
-        r.weightGram, r.weightKg, r.volumeIncrement,
-        r.binKey, r.servoAngle, r.confidence, r.source
+        idx + 1,
+        r.id,
+        dateVn,
+        r.timeStr,
+        matNames[r.material] || r.material,
+        sizeNames[r.size] || r.size,
+        r.weightGram,
+        r.weightKg,
+        r.volumeIncrement,
+        binNames[r.binKey] || r.binKey,
+        r.servoAngle,
+        r.confidence,
+        sourceVn
       ].map(csvEscape).join(','));
     });
     return '\uFEFF' + lines.join('\r\n');
@@ -719,6 +764,32 @@
       });
     }
 
+    exportExcel(fromStr, toStr) {
+      return this.open().then(async () => {
+        const filename = formatExportFilename(fromStr, toStr, 'xlsx');
+        if (this.mode === 'SERVER') {
+          try {
+            const qs = `from=${encodeURIComponent(fromStr || '')}&to=${encodeURIComponent(toStr || '')}`;
+            const res = await global.fetch(`${this.serverBaseUrl}/export-excel?${qs}`);
+            if (res.ok) {
+              const blob = await res.blob();
+              return { blob, filename, isExcel: true };
+            }
+          } catch (e) {
+            console.warn('[WasteDB] Lỗi exportExcel từ server, fallback CSV:', e);
+          }
+        }
+
+        // IndexedDB fallback: xuất CSV có BOM tiếng Việt
+        const csvFilename = formatExportFilename(fromStr, toStr, 'csv');
+        return this.queryRecords(fromStr, toStr).then((records) => {
+          const csvText = recordsToCsv(records);
+          const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+          return { blob, filename: csvFilename, isExcel: false };
+        });
+      });
+    }
+
     exportCsv(fromStr, toStr) {
       return this.open().then(async () => {
         if (this.mode === 'SERVER') {
@@ -752,7 +823,9 @@
     round3: round3,
     emptyAggregate: emptyAggregate,
     applyToAggregate: applyToAggregate,
-    recordsToCsv: recordsToCsv
+    recordsToCsv: recordsToCsv,
+    formatDateVn: formatDateVn,
+    formatExportFilename: formatExportFilename
   };
 
   global.WasteDBModule = api;
