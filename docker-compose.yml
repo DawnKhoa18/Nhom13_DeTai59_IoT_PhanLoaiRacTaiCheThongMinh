@@ -51,6 +51,8 @@ services:
       - PORT=3000
       - DB_PATH=/app/data/smart_recycling.db
       - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+      - CLOUD_BROKERS=mqtt://broker.emqx.io:1883,mqtt://broker.hivemq.com:1883
+      - VIRTUAL_ESP32_MODE=auto
 
   # =====================================================
   # 4. FIRMWARE BUILDER (PlatformIO Core)

@@ -158,12 +158,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // 3. Global State
   let isMqttConnected = false;
   let isEsp32Alive = false;
+  let isEsp32Virtual = false;
   let lastEsp32SeenAt = 0;
   let activeBrokerType = 'cloud';
   let lastState = 'WAIT_MATERIAL';
   let isAutoTesting = false;
   let autoTestTimer = null;
   let serverSortingWatchdog = null;
+
+  function getBrokerDisplayName(type) {
+    if (type === 'local') return 'Cục bộ (Mosquitto)';
+    if (type === 'cloud_backup') return 'Đám mây dự phòng (HiveMQ)';
+    return 'Đám mây (EMQX)';
+  }
 
   // --- Thống kê: ghi nhật ký sự kiện an toàn (module độc lập, lỗi không ảnh hưởng hệ thống) ---
   const lastSystemEventAt = {};
@@ -239,6 +246,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const logContainer = document.getElementById('logContainer');
   const btnAutoTest = document.getElementById('btnAutoTest');
   const selectBroker = document.getElementById('selectBroker');
+  const selectVirtualMode = document.getElementById('selectVirtualMode');
+
+  async function syncVirtualControlVisibility() {
+    if (!selectVirtualMode) return;
+    if (activeBrokerType !== 'local') {
+      selectVirtualMode.style.display = 'none';
+      return;
+    }
+    try {
+      const res = await fetch('/api/mqtt-status');
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload && payload.virtualEsp32) {
+          selectVirtualMode.value = payload.virtualEsp32.mode || 'auto';
+          selectVirtualMode.style.display = 'inline-block';
+          return;
+        }
+      }
+    } catch (_) {
+      // Backend API không chạy hoặc mở trực tiếp file:// -> ẩn nút điều khiển server
+    }
+    selectVirtualMode.style.display = 'none';
+  }
 
   // 4. Logging Helper
   function addLog(msg, type = 'info') {
@@ -257,11 +287,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function showDisconnectedWarning(reason = 'broker') {
     alertBanner.className = 'alert-banner emergency active';
     if (reason === 'esp32') {
-      const brokerLabel = activeBrokerType === 'local' ? 'Cục bộ (Mosquitto :9001)' : 'Đám mây (EMQX)';
-      alertText.innerText = `Đã nối Broker [${brokerLabel}] nhưng chưa thấy mạch ESP32! Hãy bật mạch hoặc chọn đúng kênh Broker.`;
-      addLog(`Chưa nhận được tín hiệu từ mạch ESP32 trên kênh [${brokerLabel}]! Hãy kiểm tra mạch đang chạy ở chế độ Đám mây hay Cục bộ.`, 'warning');
+      const brokerLabel = getBrokerDisplayName(activeBrokerType);
+      alertText.innerText = `Đã nối Broker [${brokerLabel}] nhưng chưa thấy mạch ESP32! Hãy bật mạch hoặc chờ Docker dự phòng kích hoạt.`;
+      addLog(`Chưa nhận được tín hiệu từ mạch ESP32 trên kênh [${brokerLabel}]! Nếu đang dùng Cục bộ Docker, mạch dự phòng sẽ tự kích hoạt sau vài giây hoặc kiểm tra mục Dự phòng ESP32.`, 'warning');
     } else {
-      alertText.innerText = 'Chưa kết nối tới Broker MQTT! Vui lòng kiểm tra kết nối mạng hoặc Mosquitto.';
+      alertText.innerText = 'Chưa kết nối tới Broker MQTT! Hệ thống đang thử kết nối hoặc chuyển kênh dự phòng.';
       addLog('Chưa có kết nối tới Broker MQTT! Không thể gửi lệnh.', 'error');
     }
 
@@ -276,13 +306,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const mqttClient = new RecyclingMqttClient({
     onStatusChange: (status, url, brokerType) => {
       activeBrokerType = brokerType || 'cloud';
-      const brokerDisplayName = activeBrokerType === 'local' ? 'Cục bộ (Mosquitto)' : 'Đám mây (EMQX)';
+      const brokerDisplayName = getBrokerDisplayName(activeBrokerType);
+      syncVirtualControlVisibility();
 
       if (status === 'CONNECTED') {
         isMqttConnected = true;
         if (!isEsp32Alive) {
           statusPill.className = 'status-pill online';
           statusText.innerText = `Đã nối broker (Chờ mạch ESP32...)`;
+        } else if (isEsp32Virtual) {
+          statusPill.className = 'status-pill simulating';
+          statusText.innerText = `Mạch dự phòng (Docker Virtual ESP32)`;
         } else {
           statusPill.className = 'status-pill online';
           statusText.innerText = `Mạch trực tuyến (${brokerDisplayName})`;
@@ -299,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         isMqttConnected = false;
         isEsp32Alive = false;
+        isEsp32Virtual = false;
         statusPill.className = 'status-pill offline';
         statusText.innerText = `Mất kết nối (${brokerDisplayName})`;
         if (isAutoTesting) {
@@ -308,16 +343,59 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     onMessageReceived: (topic, data) => {
       lastEsp32SeenAt = Date.now();
-      if (!isEsp32Alive) {
+      const incomingVirtual = !!(data && data.virtual);
+
+      if (!isEsp32Alive || isEsp32Virtual !== incomingVirtual) {
         isEsp32Alive = true;
-        const shortName = activeBrokerType === 'local' ? 'Cục bộ' : 'Đám mây';
-        statusPill.className = 'status-pill online';
-        statusText.innerText = `Mạch trực tuyến (${shortName})`;
-        addLog(`[ESP32] Đã nhận tín hiệu từ mạch! Hệ thống sẵn sàng hoạt động.`, 'success');
+        isEsp32Virtual = incomingVirtual;
+
+        if (isEsp32Virtual) {
+          statusPill.className = 'status-pill simulating';
+          statusText.innerText = 'Mạch dự phòng (Docker Virtual ESP32)';
+          addLog('[ESP32 Dự phòng] Đã kích hoạt mạch giả lập trong Docker (không phát hiện mạch Wokwi/phần cứng).', 'warning');
+        } else if (activeBrokerType === 'local') {
+          const viaBridge = data.broker && data.broker !== 'local-docker';
+          statusPill.className = 'status-pill online';
+          statusText.innerText = viaBridge ? 'Mạch trực tuyến ' : 'Mạch trực tuyến (Cục bộ)';
+          addLog(
+            viaBridge
+              ? `[ESP32] Đã nhận tín hiệu Wokwi qua cầu nối Docker Bridge (${data.broker})!`
+              : '[ESP32] Đã nhận tín hiệu trực tiếp từ mạch trên Mosquitto cục bộ!',
+            'success'
+          );
+        } else {
+          statusPill.className = 'status-pill online';
+          statusText.innerText = activeBrokerType === 'cloud_backup'
+            ? 'Mạch trực tuyến (HiveMQ dự phòng)'
+            : 'Mạch trực tuyến (Đám mây)';
+          addLog(`[ESP32] Đã nhận tín hiệu từ mạch trên [${getBrokerDisplayName(activeBrokerType)}]! Hệ thống sẵn sàng.`, 'success');
+        }
       }
+
       renderTelemetry(data);
       if (data.message) {
-        addLog(`[ESP32] ${data.message}`, data.emergency ? 'error' : (data.warning ? 'warning' : 'info'));
+        const prefix = incomingVirtual ? '[ESP32 Dự phòng]' : '[ESP32]';
+        addLog(`${prefix} ${data.message}`, data.emergency ? 'error' : (data.warning ? 'warning' : 'info'));
+      }
+    },
+    onSuggestFailover: async (failedType) => {
+      if (failedType === 'cloud') {
+        addLog('[Failover] Kênh Đám mây EMQX không phản hồi! Tự động chuyển sang Đám mây dự phòng (HiveMQ)...', 'warning');
+        if (selectBroker) selectBroker.value = 'cloud_backup';
+        mqttClient.switchBroker('cloud_backup');
+      } else if (failedType === 'cloud_backup') {
+        try {
+          const res = await fetch('/api/health');
+          if (res.ok) {
+            addLog('[Failover] Đám mây MQTT đều không truy cập được. Tự động chuyển về Cục bộ Docker (Mosquitto :9001)!', 'warning');
+            if (selectBroker) selectBroker.value = 'local';
+            isEsp32Alive = false;
+            isEsp32Virtual = false;
+            mqttClient.switchBroker('local');
+          }
+        } catch (_) {
+          // Không có Docker local server đang mở
+        }
       }
     },
     onError: (err) => {
@@ -480,7 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
         stopAutoTest('Hệ thống dừng khẩn cấp (E-Stop)');
       }
       if (btnEmergencyEl) {
-        btnEmergencyEl.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 19 12 7 20 7 4"/></svg> <span>Mở khóa & Khởi động lại</span>`;
+        btnEmergencyEl.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 19 12 7 20 7 4"/></svg> <span>Mở khóa và khởi động lại</span>`;
         btnEmergencyEl.classList.add('resuming');
       }
     } else if (data.full || state === 'BIN_FULL_STOP') {
@@ -593,7 +671,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alertBanner.className = 'alert-banner emergency active';
         alertText.innerText = 'Cảnh báo: Đã dừng khẩn cấp! Hệ thống tạm ngưng hoạt động.';
         if (btnEmerg) {
-          btnEmerg.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 19 12 7 20 7 4"/></svg> <span>Mở khóa & Khởi động lại</span>`;
+          btnEmerg.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 19 12 7 20 7 4"/></svg> <span>Mở khóa và khởi động lại</span>`;
           btnEmerg.classList.add('resuming');
         }
         if (isAutoTesting) stopAutoTest('Dừng khẩn cấp (E-Stop)');
@@ -733,6 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
     selectBroker.addEventListener('change', (e) => {
       const brokerChoice = e.target.value;
       isEsp32Alive = false;
+      isEsp32Virtual = false;
       lastEsp32SeenAt = 0;
       setServerSortingWithWatchdog(false);
       if (anim && typeof anim.clearAllItems === 'function') {
@@ -741,8 +820,33 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isAutoTesting) {
         stopAutoTest('Đổi broker MQTT');
       }
-      addLog(`Đang chuyển sang ${brokerChoice === 'local' ? 'Mạch cục bộ (Mosquitto :9001)' : 'Mạch đám mây (EMQX)'}...`, 'info');
+      addLog(`Đang chuyển sang ${getBrokerDisplayName(brokerChoice)}...`, 'info');
       mqttClient.switchBroker(brokerChoice);
+    });
+  }
+
+  if (selectVirtualMode) {
+    selectVirtualMode.addEventListener('change', async (e) => {
+      const mode = e.target.value;
+      try {
+        const res = await fetch('/api/virtual-esp32', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        const json = await res.json();
+        if (res.ok) {
+          addLog(`[Docker Virtual ESP32] Đã chuyển sang chế độ: ${mode.toUpperCase()} (${json.data.lastReason || ''})`, 'info');
+          if (mode === 'off' && isEsp32Virtual) {
+            isEsp32Alive = false;
+            isEsp32Virtual = false;
+            statusPill.className = 'status-pill online';
+            statusText.innerText = 'Đã nối broker (Chờ mạch ESP32...)';
+          }
+        }
+      } catch (err) {
+        addLog(`Không thể đổi chế độ dự phòng Docker: ${err.message}`, 'error');
+      }
     });
   }
 
@@ -750,6 +854,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(() => {
     if (isMqttConnected && isEsp32Alive && lastEsp32SeenAt > 0 && Date.now() - lastEsp32SeenAt > 10000) {
       isEsp32Alive = false;
+      isEsp32Virtual = false;
       setServerSortingWithWatchdog(false);
       statusPill.className = 'status-pill online';
       statusText.innerText = 'Đã nối broker (Chờ mạch ESP32...)';

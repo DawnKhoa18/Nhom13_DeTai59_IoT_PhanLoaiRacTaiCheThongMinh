@@ -5,22 +5,40 @@
 #include <ArduinoJson.h>
 
 // =====================================================
-// WIFI & MQTT CONFIGURATION
-// 1: Mạch Đám mây (broker.emqx.io) - Tiện lợi cho Wokwi qua Internet
-// 0: Mạch Cục bộ (Mosquitto Docker qua host.wokwi.internal hoặc IP LAN máy tính)
+// WIFI & MQTT CONFIGURATION (AUTO-FAILOVER ĐA BROKER)
+// 0: Ưu tiên Đám mây (Wokwi Free: EMQX -> HiveMQ -> Local Docker)
+// 1: Ưu tiên Cục bộ Docker (Wokwi Club / Mạch ESP32 thật mạng LAN)
 // =====================================================
-#define USE_CLOUD_BROKER 1
+#define PREFER_LOCAL_BROKER 0
 
 const char* WIFI_SSID         = "Wokwi-GUEST";
 const char* WIFI_PASS         = "";
 
-#if USE_CLOUD_BROKER
-const char* MQTT_BROKER       = "broker.emqx.io";
-const int   MQTT_PORT         = 1883;
+struct BrokerEndpoint {
+  const char* host;
+  int port;
+  const char* label;
+};
+
+#if PREFER_LOCAL_BROKER
+const BrokerEndpoint MQTT_BROKERS[] = {
+  { "host.wokwi.internal", 1883, "local-docker" },
+  { "broker.emqx.io",      1883, "cloud-emqx" },
+  { "broker.hivemq.com",   1883, "cloud-hivemq" }
+};
 #else
-const char* MQTT_BROKER       = "host.wokwi.internal"; // hoặc IP máy tính chạy Docker Mosquitto
-const int   MQTT_PORT         = 1883;
+const BrokerEndpoint MQTT_BROKERS[] = {
+  { "broker.emqx.io",      1883, "cloud-emqx" },
+  { "broker.hivemq.com",   1883, "cloud-hivemq" },
+  { "host.wokwi.internal", 1883, "local-docker" }
+};
 #endif
+
+const int MQTT_BROKER_COUNT   = sizeof(MQTT_BROKERS) / sizeof(MQTT_BROKERS[0]);
+int currentBrokerIdx          = 0;
+int brokerFailCount           = 0;
+bool firstMqttAttempt         = true;
+
 const char* MQTT_TOPIC_STATUS = "nhom13/recycling/status";
 const char* MQTT_TOPIC_COMMAND= "nhom13/recycling/command";
 
@@ -176,6 +194,7 @@ void publishTelemetry(const char* customMsg) {
   doc["emergency"] = emergencyActive;
   doc["warning"] = (state == BIN_FULL_STOP || aluminumLevel >= WARNING_LEVEL || steelLevel >= WARNING_LEVEL || plasticLevel >= WARNING_LEVEL || inspectionLevel >= WARNING_LEVEL);
   doc["full"] = (state == BIN_FULL_STOP || isBinFull("ALUMINUM") || isBinFull("STEEL") || isBinFull("PLASTIC") || isBinFull("UNKNOWN"));
+  doc["broker"] = MQTT_BROKERS[currentBrokerIdx].label;
 
   if (customMsg != nullptr) {
     doc["message"] = customMsg;
@@ -283,8 +302,10 @@ void setupNetwork() {
     Serial.println("WiFi not yet connected. Will retry in background.");
   }
 
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setServer(MQTT_BROKERS[currentBrokerIdx].host, MQTT_BROKERS[currentBrokerIdx].port);
   mqttClient.setBufferSize(512);
+  mqttClient.setSocketTimeout(3);
+  mqttClient.setKeepAlive(15);
   mqttClient.setCallback(mqttCallback);
 }
 
@@ -295,20 +316,39 @@ void maintainMqtt() {
 
   if (!mqttClient.connected()) {
     unsigned long now = millis();
-    if (now - lastMqttRetry > 4000) {
+    if (firstMqttAttempt || (now - lastMqttRetry > 3500)) {
+      firstMqttAttempt = false;
       lastMqttRetry = now;
+      const BrokerEndpoint& ep = MQTT_BROKERS[currentBrokerIdx];
       String clientId = "ESP32Recycling-" + String(random(0xffff), HEX);
-      Serial.print("Connecting to MQTT Broker: ");
-      Serial.println(MQTT_BROKER);
+      Serial.print("Connecting to MQTT Broker [");
+      Serial.print(ep.label);
+      Serial.print("]: ");
+      Serial.println(ep.host);
+
+      mqttClient.setServer(ep.host, ep.port);
       if (mqttClient.connect(clientId.c_str())) {
-        Serial.println("MQTT Connected successfully!");
+        brokerFailCount = 0;
+        Serial.print("MQTT Connected successfully to [");
+        Serial.print(ep.label);
+        Serial.println("]!");
         bool subOk = mqttClient.subscribe(MQTT_TOPIC_COMMAND);
         Serial.print("Subscribed to command topic: ");
         Serial.println(subOk ? "SUCCESS" : "FAILED");
         publishTelemetry("ESP32 Online & Ready");
       } else {
-        Serial.print("MQTT connect failed, state=");
+        brokerFailCount++;
+        Serial.print("MQTT connect failed (");
+        Serial.print(ep.label);
+        Serial.print("), state=");
         Serial.println(mqttClient.state());
+
+        if (brokerFailCount >= 2) {
+          brokerFailCount = 0;
+          currentBrokerIdx = (currentBrokerIdx + 1) % MQTT_BROKER_COUNT;
+          Serial.print("[Failover] Switching to backup MQTT Broker: ");
+          Serial.println(MQTT_BROKERS[currentBrokerIdx].host);
+        }
       }
     }
   } else {

@@ -17,11 +17,13 @@ class RecyclingMqttClient {
     this.brokerType = 'cloud';
     this.client = null;
     this.isConnected = false;
+    this.connectFailures = 0;
 
     // Callbacks
     this.onStatusChange = options.onStatusChange || (() => {});
     this.onMessageReceived = options.onMessageReceived || (() => {});
     this.onError = options.onError || (() => {});
+    this.onSuggestFailover = options.onSuggestFailover || (() => {});
   }
 
   connect() {
@@ -43,12 +45,13 @@ class RecyclingMqttClient {
       this.client = mqtt.connect(url, {
         clientId: clientId,
         clean: true,
-        connectTimeout: 8000,
-        reconnectPeriod: 4000
+        connectTimeout: 5500,
+        reconnectPeriod: 3500
       });
 
       this.client.on('connect', () => {
         this.isConnected = true;
+        this.connectFailures = 0;
         console.log(`[MQTT] Connected to broker successfully!`);
         this.onStatusChange('CONNECTED', url, this.brokerType);
 
@@ -75,6 +78,12 @@ class RecyclingMqttClient {
       this.client.on('reconnect', () => {
         console.log('[MQTT] Reconnecting...');
         this.onStatusChange('RECONNECTING', null, this.brokerType);
+        if (!this.isConnected) {
+          this.connectFailures++;
+          if (this.connectFailures === 2 && (this.brokerType === 'cloud' || this.brokerType === 'cloud_backup')) {
+            this.onSuggestFailover(this.brokerType);
+          }
+        }
       });
 
       this.client.on('close', () => {
@@ -85,8 +94,12 @@ class RecyclingMqttClient {
       this.client.on('error', (err) => {
         console.error('[MQTT] Error:', err);
         this.isConnected = false;
+        this.connectFailures++;
         this.onStatusChange('DISCONNECTED', null, this.brokerType);
         this.onError(err);
+        if (this.connectFailures === 2 && (this.brokerType === 'cloud' || this.brokerType === 'cloud_backup')) {
+          this.onSuggestFailover(this.brokerType);
+        }
       });
     } catch (e) {
       console.error('[MQTT] Connect exception:', e);
@@ -98,8 +111,14 @@ class RecyclingMqttClient {
 
   disconnect() {
     if (this.client) {
-      this.client.end(true);
+      const oldClient = this.client;
       this.client = null;
+      try {
+        if (typeof oldClient.removeAllListeners === 'function') {
+          oldClient.removeAllListeners();
+        }
+        oldClient.end(true);
+      } catch (_) {}
       this.isConnected = false;
       this.onStatusChange('DISCONNECTED', null, this.brokerType);
     }
@@ -107,12 +126,19 @@ class RecyclingMqttClient {
 
   switchBroker(type) {
     this.disconnect();
-    this.brokerType = type;
-    if (type === 'local') {
+    this.brokerType = type || 'cloud';
+    this.connectFailures = 0;
+
+    if (this.brokerType === 'local') {
       this.brokerHost = window.location.hostname || 'localhost';
       this.brokerPort = 9001;
       this.brokerProtocol = 'ws';
       this.brokerPath = '';
+    } else if (this.brokerType === 'cloud_backup') {
+      this.brokerHost = 'broker.hivemq.com';
+      this.brokerPort = 8884;
+      this.brokerProtocol = 'wss';
+      this.brokerPath = '/mqtt';
     } else {
       this.brokerHost = 'broker.emqx.io';
       this.brokerPort = 8084;

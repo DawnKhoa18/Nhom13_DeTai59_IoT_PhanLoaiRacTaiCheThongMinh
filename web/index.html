@@ -6,10 +6,10 @@
   <title>Bảng điều khiển phân loại rác IoT | Đề tài 59 - Nhóm 13</title>
   
   <!-- Font and Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=20261110_v9">
+  <link rel="stylesheet" href="css/style.css?v=20261116_v10">
 
   <!-- MQTT.js Local Library (Reliable & Offline Ready) -->
-  <script src="js/mqtt.min.js?v=20261110_v9"></script>
+  <script src="js/mqtt.min.js?v=20261116_v10"></script>
 </head>
 <body>
 
@@ -27,8 +27,15 @@
     <div class="header-controls">
       <!-- Broker Selection -->
       <select id="selectBroker" autocomplete="off" class="btn-mode" style="padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chọn kết nối broker MQTT cho mạch ESP32">
-        <option value="cloud">Mạch đám mây (EMQX)</option>
-        <option value="local">Mạch cục bộ (Mosquitto :9001)</option>
+        <option value="cloud">Mạch đám mây chính (EMQX)</option>
+        <option value="local">Mạch cục bộ Docker (Mosquitto :9001)</option>
+      </select>
+
+      <!-- Docker Virtual ESP32 Mode (chỉ hiện khi dùng Cục bộ Docker có Backend) -->
+      <select id="selectVirtualMode" autocomplete="off" class="btn-mode" style="display: none; padding: 6px 10px; cursor: pointer; font-size: 0.8rem;" title="Chế độ mạch ESP32 giả lập dự phòng trong Docker">
+        <option value="auto">Dự phòng ESP32: Tự động (6s)</option>
+        <option value="on">Dự phòng ESP32: Luôn bật</option>
+        <option value="off">Dự phòng ESP32: Tắt</option>
       </select>
 
       <!-- Connection Status Pill -->
@@ -490,11 +497,11 @@
   </footer>
 
   <!-- Application Logic Scripts -->
-  <script src="js/chart.umd.min.js?v=20261110_v9"></script>
-  <script src="js/waste-db.js?v=20261110_v9"></script>
-  <script src="js/waste-statistics.js?v=20261110_v9"></script>
-  <script src="js/animation.js?v=20261110_v9"></script>
-  <script src="js/mqtt-client.js?v=20261110_v9"></script>
-  <script src="js/app.js?v=20261110_v9"></script>
+  <script src="js/chart.umd.min.js?v=20261116_v10"></script>
+  <script src="js/waste-db.js?v=20261116_v10"></script>
+  <script src="js/waste-statistics.js?v=20261116_v10"></script>
+  <script src="js/animation.js?v=20261116_v10"></script>
+  <script src="js/mqtt-client.js?v=20261116_v10"></script>
+  <script src="js/app.js?v=20261116_v10"></script>
 </body>
 </html>

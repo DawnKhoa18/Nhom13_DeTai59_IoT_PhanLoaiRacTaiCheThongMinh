@@ -97,7 +97,7 @@ class MqttIngestor {
             size: size,
             volumeIncrement: data.increment || 10,
             confidence: typeof data.confidence === 'number' ? data.confidence : 96.5,
-            source: 'LIVE'
+            source: data.virtual ? 'VIRTUAL_DOCKER' : 'LIVE'
           });
           console.log(`[MqttIngestor] Đã lưu rác mới: ${material} (${size}) -> ID: ${rec.id}, Khối lượng: ${rec.weightGram}g`);
         } catch (e) {
@@ -106,22 +106,29 @@ class MqttIngestor {
       }
     }
 
-    // 2. Ghi nhận chu kỳ đổ thùng ("All bins emptied")
-    const isBinsEmptied = msg.includes('All bins emptied') || 
-      (currentTotalBins === 0 && (this.previousBins.aluminum + this.previousBins.steel + this.previousBins.plastic + this.previousBins.inspection) > 0 && (now - this.lastEmptiedTs > 5000));
+    // 2. Ghi nhận chu kỳ đổ thùng ("All bins emptied") — bỏ qua gói tin khởi động "ESP32 Online & Ready"
+    const isBootMsg = msg.includes('ESP32 Online & Ready');
+    if (isBootMsg) {
+      this.previousBins = { aluminum: 0, steel: 0, plastic: 0, inspection: 0 };
+    } else {
+      const prevTotalBins = this.previousBins.aluminum + this.previousBins.steel + this.previousBins.plastic + this.previousBins.inspection;
+      const isBinsEmptied = msg.includes('All bins emptied') ||
+        (currentTotalBins === 0 && prevTotalBins > 0 && (now - this.lastEmptiedTs > 5000));
 
-    if (isBinsEmptied && (now - this.lastEmptiedTs > 4000)) {
-      this.lastEmptiedTs = now;
-      const levelsToRecord = Object.assign({}, this.previousBins);
-      try {
-        const cycle = this.db.recordBinCycle({
-          timestamp: now,
-          triggerSource: 'ESP32_TELEMETRY',
-          levels: levelsToRecord
-        });
-        console.log(`[MqttIngestor] Đã ghi nhận chu kỳ đổ thùng (ID: ${cycle.id}), thu gom ước tính: ${cycle.estimatedWeightClearedKg} kg`);
-      } catch (e) {
-        console.error('[MqttIngestor] Lỗi ghi nhận đổ thùng:', e.message);
+      if (isBinsEmptied && prevTotalBins > 0 && (now - this.lastEmptiedTs > 4000)) {
+        this.lastEmptiedTs = now;
+        const levelsToRecord = Object.assign({}, this.previousBins);
+        this.previousBins = { aluminum: 0, steel: 0, plastic: 0, inspection: 0 };
+        try {
+          const cycle = this.db.recordBinCycle({
+            timestamp: now,
+            triggerSource: data.virtual ? 'VIRTUAL_DOCKER' : 'ESP32_TELEMETRY',
+            levels: levelsToRecord
+          });
+          console.log(`[MqttIngestor] Đã ghi nhận chu kỳ đổ thùng (ID: ${cycle.id}), thu gom ước tính: ${cycle.estimatedWeightClearedKg} kg`);
+        } catch (e) {
+          console.error('[MqttIngestor] Lỗi ghi nhận đổ thùng:', e.message);
+        }
       }
     }
 

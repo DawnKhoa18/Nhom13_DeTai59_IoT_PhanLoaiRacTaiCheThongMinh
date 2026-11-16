@@ -3,8 +3,10 @@
 const express = require('express');
 const { buildWasteExcelWorkbook, formatExportFilename } = require('./excel-export');
 
-function createApiRouter(db) {
+function createApiRouter(db, deps = {}) {
   const router = express.Router();
+  const cloudBridge = deps.cloudBridge || null;
+  const virtualEsp32 = deps.virtualEsp32 || null;
 
   // 1. Health check
   router.get('/health', (req, res) => {
@@ -187,6 +189,30 @@ function createApiRouter(db) {
       res.send(csv);
     } catch (e) {
       res.status(500).json({ status: 'error', message: e.message });
+    }
+  });
+
+  // 12. Trạng thái Cầu nối Cloud-Local & Virtual ESP32 dự phòng
+  router.get('/mqtt-status', (req, res) => {
+    res.json({
+      status: 'ok',
+      bridge: cloudBridge ? cloudBridge.getStatus() : null,
+      virtualEsp32: virtualEsp32 ? virtualEsp32.getStatus() : null,
+      timestamp: Date.now()
+    });
+  });
+
+  // 13. Chỉnh chế độ Virtual ESP32 ('auto' | 'on' | 'off')
+  router.post('/virtual-esp32', (req, res) => {
+    try {
+      if (!virtualEsp32) {
+        return res.status(503).json({ status: 'error', message: 'Virtual ESP32 service chưa được khởi tạo' });
+      }
+      const mode = req.body && req.body.mode;
+      const state = virtualEsp32.setMode(mode);
+      res.json({ status: 'ok', data: state });
+    } catch (e) {
+      res.status(400).json({ status: 'error', message: e.message });
     }
   });
 

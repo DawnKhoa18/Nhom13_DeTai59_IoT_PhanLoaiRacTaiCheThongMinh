@@ -6,6 +6,8 @@ const cors = require('cors');
 const { ServerDatabase } = require('./db');
 const { createApiRouter } = require('./api');
 const { MqttIngestor } = require('./mqtt-ingestor');
+const { CloudBridge } = require('./cloud-bridge');
+const { VirtualEsp32Twin } = require('./virtual-esp32');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../data/smart_recycling.db');
@@ -21,13 +23,26 @@ console.log(`- HTTP API Port : ${PORT}`);
 // 1. Khởi tạo Cơ sở dữ liệu SQLite
 const db = new ServerDatabase(DB_PATH);
 
-// 2. Khởi tạo Express Server
+// 2. Khởi tạo Dịch vụ Cầu nối & Giả lập ESP32 Dự phòng
+const cloudBridge = new CloudBridge({
+  localUrl: MQTT_BROKER_URL,
+  topicStatus: 'nhom13/recycling/status',
+  topicCommand: 'nhom13/recycling/command'
+});
+
+const virtualEsp32 = new VirtualEsp32Twin({
+  brokerUrl: MQTT_BROKER_URL,
+  topicStatus: 'nhom13/recycling/status',
+  topicCommand: 'nhom13/recycling/command'
+});
+
+// 3. Khởi tạo Express Server
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // Gắn API Router
-app.use('/api', createApiRouter(db));
+app.use('/api', createApiRouter(db, { cloudBridge, virtualEsp32 }));
 
 // Root info
 app.get('/', (req, res) => {
@@ -39,26 +54,33 @@ app.get('/', (req, res) => {
       configs: '/api/configs',
       stats: '/api/stats?from=YYYY-MM-DD&to=YYYY-MM-DD',
       records: '/api/records',
+      mqttStatus: '/api/mqtt-status',
+      virtualEsp32: '/api/virtual-esp32',
+      exportExcel: '/api/export-excel',
       exportCsv: '/api/export-csv'
     }
   });
 });
 
-// 3. Khởi chạy HTTP Server
+// 4. Khởi chạy HTTP Server
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[HTTP] API Server sẵn sàng lắng nghe tại http://0.0.0.0:${PORT}`);
 });
 
-// 4. Khởi chạy MQTT Ingestor (lắng nghe bản tin từ ESP32 24/7)
+// 5. Khởi chạy MQTT Ingestor, CloudBridge & Virtual ESP32 Standby
 const ingestor = new MqttIngestor(db, {
   brokerUrl: MQTT_BROKER_URL,
   topicStatus: 'nhom13/recycling/status'
 });
 ingestor.start();
+cloudBridge.start();
+virtualEsp32.start();
 
-// 5. Quản lý dừng tiến trình an toàn (Graceful Shutdown)
+// 6. Quản lý dừng tiến trình an toàn (Graceful Shutdown)
 function shutdown(signal) {
   console.log(`\n[Shutdown] Nhận tín hiệu ${signal}. Đang đóng các kết nối...`);
+  cloudBridge.stop();
+  virtualEsp32.stop();
   ingestor.stop();
   server.close(() => {
     db.close();
@@ -70,4 +92,4 @@ function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-module.exports = { app, server, db, ingestor };
+module.exports = { app, server, db, ingestor, cloudBridge, virtualEsp32 };
